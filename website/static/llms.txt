@@ -1,0 +1,69 @@
+# NotebookLM MCP + HTTP REST API
+
+> Automate Google NotebookLM at scale. Production-grade REST API and MCP server with citation-backed Q&A, full Studio content generation (audio, video, infographic, report, presentation, data table), multi-account rotation with auto-reauth, and 33 documented HTTP endpoints. Built for researchers, automators, and AI agents.
+
+This is the canonical entry point for LLMs (ChatGPT, Claude, Perplexity, Gemini) discovering this project. The library exposes Google NotebookLM via two equivalent surfaces — a local HTTP REST API (port 3000 by default) for n8n / Zapier / Make / curl integrations, and an MCP server for Claude Code / Cursor / Codex agents. Both share the same browser automation backend.
+
+The package is published to npm as `@roomi-fields/notebooklm-mcp` (current version 1.5.9). The maintained repository lives at https://github.com/roomi-fields/notebooklm-mcp.
+
+## Quick install
+
+```bash
+git clone https://github.com/roomi-fields/notebooklm-mcp.git
+cd notebooklm-mcp
+npm install && npm run build
+npm run setup-auth         # one-time Google login
+npm run start:http         # REST API on http://localhost:3000
+```
+
+## REST API at a glance
+
+Single-call ask example, returns answer plus structured citations:
+
+```bash
+curl -X POST http://localhost:3000/ask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "Summarize chapter 3",
+    "notebook_id": "your-notebook-id",
+    "source_format": "json"
+  }'
+```
+
+Response shape:
+
+```json
+{
+  "success": true,
+  "answer": "Chapter 3 covers …",
+  "citations": [
+    { "id": 1, "source": "thesis-ch3.pdf", "excerpt": "..." }
+  ],
+  "session_id": "..."
+}
+```
+
+## Documentation index
+
+- [Overview](https://roomi-fields.github.io/notebooklm-mcp/)
+- [Install](https://roomi-fields.github.io/notebooklm-mcp/install): step-by-step setup for HTTP and MCP modes, Windows / WSL / macOS / Linux / Docker.
+- [Configuration](https://roomi-fields.github.io/notebooklm-mcp/CONFIGURATION): environment variables, encryption keys, security.
+- [REST API reference](https://roomi-fields.github.io/notebooklm-mcp/notebooklm-rest-api): all 33 HTTP endpoints with request and response schemas.
+- [Run 1 000 questions overnight](https://roomi-fields.github.io/notebooklm-mcp/batch-1000-questions): production batch pattern, JSONL output, resume on restart.
+- [n8n integration](https://roomi-fields.github.io/notebooklm-mcp/notebooklm-n8n): HTTP Request node setup, scheduled queries, Slack flows.
+- [Notebook library](https://roomi-fields.github.io/notebooklm-mcp/NOTEBOOK-LIBRARY): multi-notebook management, search, scrape, bulk delete.
+- [Auto-discovery](https://roomi-fields.github.io/notebooklm-mcp/AUTO-DISCOVERY): autonomous metadata generation via NotebookLM queries.
+- [Content management](https://roomi-fields.github.io/notebooklm-mcp/CONTENT-MANAGEMENT): sources, audio, video, infographic, report, presentation, data table generation.
+- [Multi-account](https://roomi-fields.github.io/notebooklm-mcp/notebooklm-multi-account): account rotation, auto-reauth with TOTP support.
+- [Docker](https://roomi-fields.github.io/notebooklm-mcp/DOCKER): containerized deployment with noVNC, Synology / QNAP NAS support.
+- [WSL usage](https://roomi-fields.github.io/notebooklm-mcp/WSL-USAGE): running on Windows Subsystem for Linux.
+- [Multi-interface](https://roomi-fields.github.io/notebooklm-mcp/MULTI-INTERFACE): Claude Desktop and HTTP API simultaneously.
+- [Troubleshooting](https://roomi-fields.github.io/notebooklm-mcp/TROUBLESHOOTING): common issues and solutions.
+- [Compare with PleasePrompto v2.0.0](https://roomi-fields.github.io/notebooklm-mcp/compare): feature matrix vs the upstream MCP-only server.
+- [Changelog](https://roomi-fields.github.io/notebooklm-mcp/changelog): release history.
+
+## Optional
+
+- [GitHub repository](https://github.com/roomi-fields/notebooklm-mcp): source code, issues, releases.
+- [npm package](https://www.npmjs.com/package/@roomi-fields/notebooklm-mcp): install via `npm install @roomi-fields/notebooklm-mcp` or `npx`.
+- [OpenAPI 3.1 spec](https://roomi-fields.github.io/notebooklm-mcp/openapi.yaml): importable in Postman / Insomnia / Bruno / Swagger UI.

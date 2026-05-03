@@ -1,10 +1,10 @@
 <div align="center">
 
-# NotebookLM MCP + HTTP REST API
+# NotebookLM REST API + MCP server
 
-**Google NotebookLM over MCP + a local HTTP REST API — Q&A with citations, audio podcasts, video generation, multi-account rotation. Works with Claude Code, Codex, Cursor, n8n, Zapier, Make.**
+**Automate Google NotebookLM at scale. 33-endpoint HTTP REST API for n8n / Zapier / Make / curl, plus an MCP server for Claude Code / Cursor / Codex. Citation-backed Q&A, full Studio generation (audio · video · infographic · report · presentation · data table), multi-account rotation with auto-reauth.**
 
-> 🟢 **Actively maintained fork** of [PleasePrompto/notebooklm-mcp](https://github.com/PleasePrompto/notebooklm-mcp) (upstream last push: 2025-12-27). This fork ships v1.5.8 (2026-04-19) with 2026 NotebookLM UI selectors, HTTP REST API for n8n / Zapier / Make, multi-account rotation, and documented install on Windows / WSL / Docker.
+> v1.5.9 — production-grade, batch-tested on overnight runs of 1 000+ questions. [Compare with `PleasePrompto/notebooklm-mcp` v2.0.0](https://roomi-fields.github.io/notebooklm-mcp/compare) to see when this project is the right pick (REST API, full Studio, auto-reauth) and when the MCP-only upstream is.
 
 <!-- Badges -->
 
@@ -71,10 +71,29 @@ Generate multiple content types from your notebook sources:
 
 ## Quick Start
 
-### Option 1: MCP Mode (Claude Code, Cursor, Codex)
+### Option 1 — HTTP REST API (n8n, Zapier, Make, curl, any HTTP client)
 
 ```bash
-# Clone and build locally
+git clone https://github.com/roomi-fields/notebooklm-mcp.git
+cd notebooklm-mcp
+npm install && npm run build
+npm run setup-auth   # One-time Google login
+npm run start:http   # Start REST API on port 3000
+```
+
+```bash
+# Citation-backed Q&A, single curl, JSON response
+curl -X POST http://localhost:3000/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question": "Summarize chapter 3", "notebook_id": "your-id", "source_format": "json"}'
+```
+
+The full surface is **33 documented endpoints** — see the [REST API reference](https://roomi-fields.github.io/notebooklm-mcp/notebooklm-rest-api). For overnight batches of 1 000+ questions, see the [batch pattern](https://roomi-fields.github.io/notebooklm-mcp/batch-1000-questions).
+
+### Option 2 — MCP Mode (Claude Code, Cursor, Codex)
+
+```bash
+# Build (same package, MCP transport)
 git clone https://github.com/roomi-fields/notebooklm-mcp.git
 cd notebooklm-mcp
 npm install && npm run build
@@ -82,7 +101,7 @@ npm install && npm run build
 # Claude Code
 claude mcp add notebooklm node /path/to/notebooklm-mcp/dist/index.js
 
-# Cursor - add to ~/.cursor/mcp.json
+# Cursor — add to ~/.cursor/mcp.json
 {
   "mcpServers": {
     "notebooklm": {
@@ -95,24 +114,7 @@ claude mcp add notebooklm node /path/to/notebooklm-mcp/dist/index.js
 
 Then say: _"Log me in to NotebookLM"_ → Chrome opens → log in with Google.
 
-### Option 2: HTTP REST API (n8n, Zapier, Make.com)
-
-```bash
-git clone https://github.com/roomi-fields/notebooklm-mcp.git
-cd notebooklm-mcp
-npm install && npm run build
-npm run setup-auth   # One-time Google login
-npm run start:http   # Start server on port 3000
-```
-
-```bash
-# Query the API
-curl -X POST http://localhost:3000/ask \
-  -H "Content-Type: application/json" \
-  -d '{"question": "Explain X", "notebook_id": "my-notebook"}'
-```
-
-### Option 3: Docker (NAS, Server)
+### Option 3 — Docker (NAS, server, headless)
 
 ```bash
 # Build and run
@@ -131,19 +133,25 @@ See [Docker Guide](./deployment/docs/08-DOCKER.md) for NAS deployment (Synology,
 
 ## Documentation
 
-| Guide                                                        | Description                               |
-| ------------------------------------------------------------ | ----------------------------------------- |
-| [Installation](./deployment/docs/01-INSTALL.md)              | Step-by-step setup for HTTP and MCP modes |
-| [Configuration](./deployment/docs/02-CONFIGURATION.md)       | Environment variables and security        |
-| [API Reference](./deployment/docs/03-API.md)                 | Complete HTTP endpoint documentation      |
-| [n8n Integration](./deployment/docs/04-N8N-INTEGRATION.md)   | Workflow automation setup                 |
-| [Troubleshooting](./deployment/docs/05-TROUBLESHOOTING.md)   | Common issues and solutions               |
-| [Notebook Library](./deployment/docs/06-NOTEBOOK-LIBRARY.md) | Multi-notebook management                 |
-| [Auto-Discovery](./deployment/docs/07-AUTO-DISCOVERY.md)     | Autonomous metadata generation            |
-| [Docker](./deployment/docs/08-DOCKER.md)                     | Docker and Docker Compose deployment      |
-| [Multi-Interface](./deployment/docs/09-MULTI-INTERFACE.md)   | Run Claude Desktop + HTTP simultaneously  |
-| [Chrome Limitation](./docs/CHROME_PROFILE_LIMITATION.md)     | Profile locking (solved in v1.3.6+)       |
-| [Adding a Language](./docs/ADDING_A_LANGUAGE.md)             | i18n system for multilingual UI support   |
+Full docs site: **<https://roomi-fields.github.io/notebooklm-mcp/>** · [OpenAPI 3.1 spec](./deployment/docs/openapi.yaml)
+
+| Guide                                                                    | Description                                            |
+| ------------------------------------------------------------------------ | ------------------------------------------------------ |
+| [Installation](./deployment/docs/01-INSTALL.md)                          | Step-by-step setup for HTTP and MCP modes              |
+| [Configuration](./deployment/docs/02-CONFIGURATION.md)                   | Environment variables and security                     |
+| [REST API reference](./deployment/docs/03-API.md)                        | Complete HTTP endpoint documentation (33 endpoints)    |
+| [Run 1 000 questions overnight](./deployment/docs/12-BATCH-1000.md)      | Production batch pattern with auto-reauth and rotation |
+| [n8n integration](./deployment/docs/04-N8N-INTEGRATION.md)               | Workflow automation setup                              |
+| [Troubleshooting](./deployment/docs/05-TROUBLESHOOTING.md)               | Common issues and solutions                            |
+| [Notebook library](./deployment/docs/06-NOTEBOOK-LIBRARY.md)             | Multi-notebook management                              |
+| [Auto-discovery](./deployment/docs/07-AUTO-DISCOVERY.md)                 | Autonomous metadata generation                         |
+| [Content management](./deployment/docs/10-CONTENT-MANAGEMENT.md)         | Audio, video, infographic, report, presentation        |
+| [Multi-account rotation](./deployment/docs/11-MULTI-ACCOUNT.md)          | Multiple accounts with TOTP auto-reauth                |
+| [Docker](./deployment/docs/08-DOCKER.md)                                 | Docker and Docker Compose deployment                   |
+| [Multi-interface](./deployment/docs/09-MULTI-INTERFACE.md)               | Run Claude Desktop + HTTP simultaneously               |
+| [**Compare with PleasePrompto v2.0.0**](./deployment/docs/13-COMPARE.md) | Feature matrix vs the upstream MCP-only server         |
+| [Chrome profile limitation](./docs/CHROME_PROFILE_LIMITATION.md)         | Profile locking (solved in v1.3.6+)                    |
+| [Adding a language](./docs/ADDING_A_LANGUAGE.md)                         | i18n system for multilingual UI support                |
 
 ---
 

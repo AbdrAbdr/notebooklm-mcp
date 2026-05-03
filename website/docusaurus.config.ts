@@ -48,7 +48,7 @@ const config: Config = {
           url: 'https://github.com/roomi-fields',
         },
         license: 'https://opensource.org/licenses/MIT',
-        softwareVersion: '1.5.8',
+        softwareVersion: '1.5.9',
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
       }),
     },
@@ -132,20 +132,25 @@ const config: Config = {
         {
           title: 'Get Started',
           items: [
-            { label: 'Install', to: '/INSTALL' },
+            { label: 'Install', to: '/install' },
             { label: 'Configuration', to: '/CONFIGURATION' },
-            { label: 'HTTP API', to: '/API' },
+            { label: 'REST API', to: '/notebooklm-rest-api' },
+            { label: 'Run 1 000 questions', to: '/batch-1000-questions' },
             { label: 'Troubleshooting', to: '/TROUBLESHOOTING' },
           ],
         },
         {
           title: 'Integrations',
           items: [
-            { label: 'n8n', to: '/N8N-INTEGRATION' },
+            { label: 'n8n', to: '/notebooklm-n8n' },
             { label: 'Docker', to: '/DOCKER' },
             { label: 'WSL', to: '/WSL-USAGE' },
-            { label: 'Multi-account', to: '/MULTI-ACCOUNT' },
+            { label: 'Multi-account', to: '/notebooklm-multi-account' },
           ],
+        },
+        {
+          title: 'Compare',
+          items: [{ label: 'vs PleasePrompto v2', to: '/compare' }],
         },
         {
           title: 'Project',

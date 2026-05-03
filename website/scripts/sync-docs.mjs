@@ -50,16 +50,19 @@ const FRONTMATTER = {
     sidebar_position: 1,
   },
   '01-INSTALL.md': {
-    title: 'Install NotebookLM MCP on Windows, macOS, Linux, WSL',
+    title: 'Install NotebookLM MCP + REST API on Windows, macOS, Linux, WSL',
     description:
-      'Step-by-step installation guide for the NotebookLM MCP server. Clone, npm install, build, authenticate Google, register with Claude Code, Codex, or Cursor. Verify with doctor:basic.',
+      'Install the NotebookLM MCP server and REST API. Clone, npm install, build, authenticate Google, register with Claude Code, Codex, Cursor, or run as a local HTTP REST API for n8n / Zapier / Make.',
     keywords: [
       'notebooklm mcp install',
+      'install notebooklm rest api',
       'notebooklm mcp setup',
       'claude code mcp install',
       'notebooklm installation windows',
       'notebooklm wsl',
+      'notebooklm cli install',
     ],
+    slug: '/install',
   },
   '02-CONFIGURATION.md': {
     title: 'Configure NotebookLM MCP — env vars, headless, stealth, locale',
@@ -74,28 +77,34 @@ const FRONTMATTER = {
     ],
   },
   '03-API.md': {
-    title: 'HTTP REST API reference — /ask, /content, /notebooks',
+    title: 'NotebookLM REST API reference — 33 HTTP endpoints',
     description:
-      'Complete HTTP REST API reference for the NotebookLM MCP server. Endpoints /ask, /content, /notebooks, /sources, /health, /setup-auth with request and response schemas.',
+      'Complete HTTP REST API reference for NotebookLM. 33 documented endpoints: /ask, /content, /notebooks, /sources, /health, /setup-auth. Request and response schemas, ready for n8n / Zapier / Make / curl.',
     keywords: [
-      'notebooklm http api',
       'notebooklm rest api',
+      'notebooklm http api',
+      'notebooklm api endpoints',
       'notebooklm ask endpoint',
       'notebooklm content api',
-      'notebooklm rest api reference',
+      'notebooklm api reference',
+      'notebooklm openapi',
     ],
+    slug: '/notebooklm-rest-api',
   },
   '04-N8N-INTEGRATION.md': {
     title: 'NotebookLM in n8n — HTTP workflows with citations',
     description:
-      'Integrate NotebookLM into n8n workflows via the HTTP REST API. Webhook examples, scheduled queries, Slack integration, content generation flows, citation-backed responses.',
+      'Integrate NotebookLM into n8n workflows via the HTTP REST API. Webhook examples, scheduled queries, Slack integration, content generation flows, citation-backed responses. Works the same way for Zapier and Make.',
     keywords: [
       'notebooklm n8n',
       'n8n notebooklm integration',
       'n8n http request notebooklm',
       'notebooklm workflow automation',
       'zapier notebooklm',
+      'make.com notebooklm',
+      'notebooklm webhook',
     ],
+    slug: '/notebooklm-n8n',
   },
   '05-TROUBLESHOOTING.md': {
     title: 'Troubleshooting — doctor scripts, common failures and fixes',
@@ -178,16 +187,50 @@ const FRONTMATTER = {
     ],
   },
   '11-MULTI-ACCOUNT.md': {
-    title: 'Multi-account rotation for rate-limited NotebookLM sessions',
+    title: 'NotebookLM multi-account rotation with TOTP auto-reauth',
     description:
-      'Configure multiple Google accounts for the NotebookLM MCP server. Automatic rotation on rate-limit detection, TOTP support, per-account encrypted profile storage.',
+      'Configure multiple Google accounts for NotebookLM. Automatic rotation on rate-limit detection, TOTP (2FA) auto-reauth, AES-256-GCM encrypted credential vault, per-account profile storage.',
     keywords: [
       'notebooklm multi account',
       'notebooklm account rotation',
       'notebooklm rate limit',
       'notebooklm totp',
+      'notebooklm 2fa automation',
+      'notebooklm auto reauth',
       'google account rotation',
     ],
+    slug: '/notebooklm-multi-account',
+  },
+  '12-BATCH-1000.md': {
+    title: 'Run 1 000 NotebookLM questions overnight — REST API batch pattern',
+    description:
+      'Production pattern for running 1 000+ citation-backed Q&A queries against Google NotebookLM through a local HTTP REST API. Resilient batches, auto-reauth, multi-account rotation, JSON citation export, restart-safe progress, throttling.',
+    keywords: [
+      'notebooklm batch processing',
+      'notebooklm rest api',
+      'notebooklm 1000 questions',
+      'automate notebooklm',
+      'notebooklm overnight automation',
+      'notebooklm research workflow',
+      'notebooklm thesis automation',
+      'notebooklm bulk queries',
+    ],
+    slug: '/batch-1000-questions',
+  },
+  '13-COMPARE.md': {
+    title: 'NotebookLM MCP comparison — alternatives, REST API, Studio, multi-account',
+    description:
+      'Compare NotebookLM MCP servers and clients. Detailed feature matrix vs PleasePrompto/notebooklm-mcp v2.0.0 covering REST API, full Studio generation (video, infographic, report), multi-account auto-reauth with TOTP, n8n / Zapier / Make integration.',
+    keywords: [
+      'notebooklm-mcp alternative',
+      'notebooklm mcp comparison',
+      'pleaseprompto vs roomi-fields',
+      'notebooklm rest api alternative',
+      'notebooklm automation comparison',
+      'notebooklm studio api',
+      'notebooklm n8n integration',
+    ],
+    slug: '/compare',
   },
 };
 

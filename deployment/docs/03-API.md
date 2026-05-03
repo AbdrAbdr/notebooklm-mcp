@@ -1,6 +1,15 @@
-# API Documentation - NotebookLM MCP HTTP Server
+# NotebookLM REST API reference — 33 HTTP endpoints
 
-> Complete reference for all REST endpoints
+> Complete reference for the NotebookLM HTTP REST API. Citation-backed Q&A,
+> Studio content generation, notebook library, multi-account, sessions.
+>
+> **OpenAPI 3.1 spec:** [openapi.yaml](pathname:///openapi.yaml) (importable in
+> Postman, Insomnia, Bruno, Swagger UI). Source in the repo at
+> [`deployment/docs/openapi.yaml`](https://github.com/roomi-fields/notebooklm-mcp/blob/main/deployment/docs/openapi.yaml).
+>
+> **Companion guides:** [REST batch pattern (1 000 questions overnight)](/batch-1000-questions) ·
+> [n8n integration](/notebooklm-n8n) · [Multi-account rotation](/notebooklm-multi-account) ·
+> [Compare with PleasePrompto/notebooklm-mcp v2.0.0](/compare)
 
 ---
 

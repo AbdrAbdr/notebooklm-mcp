@@ -17,7 +17,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Usage',
       collapsed: false,
-      items: ['API', 'CONTENT-MANAGEMENT', 'NOTEBOOK-LIBRARY', 'AUTO-DISCOVERY'],
+      items: ['API', 'BATCH-1000', 'CONTENT-MANAGEMENT', 'NOTEBOOK-LIBRARY', 'AUTO-DISCOVERY'],
     },
     {
       type: 'category',
@@ -28,6 +28,11 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Advanced',
       items: ['MULTI-ACCOUNT', 'TROUBLESHOOTING'],
+    },
+    {
+      type: 'doc',
+      id: 'COMPARE',
+      label: 'Compare alternatives',
     },
     {
       type: 'doc',
