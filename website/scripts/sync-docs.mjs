@@ -156,11 +156,7 @@ const FRONTMATTER = {
     title: 'Use NotebookLM MCP from WSL on Windows',
     description:
       'WSL workflow for the NotebookLM MCP server. Run the server on the Windows side, call it from WSL via a helper, manage the Chrome profile across WSL and Windows.',
-    keywords: [
-      'notebooklm wsl',
-      'notebooklm windows subsystem linux',
-      'notebooklm mcp wsl setup',
-    ],
+    keywords: ['notebooklm wsl', 'notebooklm windows subsystem linux', 'notebooklm mcp wsl setup'],
   },
   '09-MULTI-INTERFACE.md': {
     title: 'Run NotebookLM MCP + HTTP server simultaneously',
@@ -217,6 +213,24 @@ const FRONTMATTER = {
     ],
     slug: '/batch-1000-questions',
   },
+  '14-RTFM-INTEGRATION.md': {
+    title: 'NotebookLM + RTFM — cache batch outputs as a searchable markdown vault',
+    description:
+      'Pipeline pattern for academic research and competitive intelligence: use NotebookLM as a one-shot ingestion layer, RTFM as the retrieval layer. /batch-to-vault endpoint, nblm-answer-v1 JSON schema, RTFM index integration, offline unlimited queries.',
+    keywords: [
+      'notebooklm rtfm',
+      'notebooklm cache',
+      'notebooklm vault',
+      'notebooklm markdown',
+      'notebooklm offline',
+      'notebooklm retrieval layer',
+      'notebooklm rate limit workaround',
+      'notebooklm sota workflow',
+      'notebooklm research pipeline',
+      'rtfm notebooklm integration',
+    ],
+    slug: '/notebooklm-rtfm',
+  },
   '13-COMPARE.md': {
     title: 'NotebookLM MCP comparison — alternatives, REST API, Studio, multi-account',
     description:
@@ -272,11 +286,7 @@ for (const file of readdirSync(sourceDir)) {
     title: 'Release history and per-version changelog',
     description:
       'Detailed per-version changelog for the NotebookLM MCP + HTTP REST API server. Added, changed, fixed, and security notes for every release since 1.0.0.',
-    keywords: [
-      'notebooklm mcp changelog',
-      'notebooklm release history',
-      'notebooklm mcp versions',
-    ],
+    keywords: ['notebooklm mcp changelog', 'notebooklm release history', 'notebooklm mcp versions'],
     sidebar_position: 99,
     slug: '/changelog',
   });

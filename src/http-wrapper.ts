@@ -9,6 +9,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
 import net from 'net';
 import { execSync } from 'child_process';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { AuthManager } from './auth/auth-manager.js';
 import { SessionManager } from './session/session-manager.js';
 import { NotebookLibrary } from './library/notebook-library.js';
@@ -16,6 +18,13 @@ import { ToolHandlers } from './tools/index.js';
 import { AutoDiscovery } from './auto-discovery/auto-discovery.js';
 import { StartupManager } from './startup/startup-manager.js';
 import { log } from './utils/logger.js';
+import {
+  formatAnswerJson,
+  formatAnswerMarkdown,
+  makeSlug,
+  type NotebookMeta,
+} from './utils/vault-writer.js';
+import type { AskQuestionSuccess } from './types.js';
 
 // Extend Express Request to include requestId
 declare global {
@@ -64,6 +73,7 @@ app.get('/', (_req: Request, res: Response) => {
     endpoints: {
       health: 'GET /health',
       ask: 'POST /ask',
+      batch_to_vault: 'POST /batch-to-vault',
       setup_auth: 'POST /setup-auth',
       notebooks: 'GET /notebooks',
       sessions: 'GET /sessions',
@@ -111,6 +121,153 @@ app.post('/ask', async (req: Request, res: Response) => {
     res.json(result);
   } catch (error) {
     log.error(`[${reqId}] /ask - Error: ${error instanceof Error ? error.message : String(error)}`);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Batch-to-vault — run a list of questions and persist each answer as
+// markdown + JSON sidecar files, ready for ingestion by RTFM or any
+// markdown vault indexer. Conforms to the nblm-answer-v1 schema.
+app.post('/batch-to-vault', async (req: Request, res: Response) => {
+  const reqId = req.requestId.substring(0, 8);
+  try {
+    const {
+      questions,
+      notebook_id,
+      notebook_url,
+      vault_dir,
+      slug_prefix = '',
+      source_format = 'json',
+      sleep_between_ms = 0,
+      session_id,
+    } = req.body;
+
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing or empty required field: questions (non-empty string array)',
+      });
+    }
+    if (!vault_dir || typeof vault_dir !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: vault_dir (absolute or relative directory path)',
+      });
+    }
+
+    const absVaultDir = path.resolve(vault_dir);
+    await fs.mkdir(absVaultDir, { recursive: true });
+
+    log.info(`[${reqId}] /batch-to-vault — ${questions.length} questions → ${absVaultDir}`);
+
+    type FileResult = {
+      question: string;
+      md_path: string;
+      json_path: string;
+      success: boolean;
+      citations_count: number;
+      error?: string;
+    };
+    const results: FileResult[] = [];
+    let currentSession: string | undefined = session_id;
+    const notebookMeta: NotebookMeta = {};
+
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      log.info(`[${reqId}] [${i + 1}/${questions.length}] ${String(q).substring(0, 80)}`);
+
+      try {
+        const askResult = await toolHandlers.handleAskQuestion(
+          {
+            question: q,
+            session_id: currentSession,
+            notebook_id,
+            notebook_url,
+            source_format,
+          },
+          async () => {}
+        );
+
+        if (!askResult?.success || !askResult.data || askResult.data.status !== 'success') {
+          const errMsg =
+            askResult?.error ||
+            (askResult?.data && 'error' in askResult.data ? askResult.data.error : 'Unknown error');
+          results.push({
+            question: q,
+            md_path: '',
+            json_path: '',
+            success: false,
+            citations_count: 0,
+            error: errMsg,
+          });
+          continue;
+        }
+
+        const data = askResult.data as AskQuestionSuccess;
+        if (data.session_id) currentSession = data.session_id;
+        if (!notebookMeta.url && data.notebook_url) notebookMeta.url = data.notebook_url;
+        if (!notebookMeta.id && notebook_id) notebookMeta.id = notebook_id;
+
+        const askedAt = new Date().toISOString();
+        const slug = makeSlug(q, slug_prefix, i);
+        const mdPath = path.join(absVaultDir, `${slug}.md`);
+        const jsonPath = path.join(absVaultDir, `${slug}.json`);
+
+        const markdown = formatAnswerMarkdown(data, notebookMeta, askedAt);
+        const jsonPayload = formatAnswerJson(data, notebookMeta, askedAt);
+
+        await fs.writeFile(mdPath, markdown, 'utf-8');
+        await fs.writeFile(jsonPath, JSON.stringify(jsonPayload, null, 2), 'utf-8');
+
+        results.push({
+          question: q,
+          md_path: mdPath,
+          json_path: jsonPath,
+          success: true,
+          citations_count: data.sources?.citations.length ?? 0,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log.error(`[${reqId}] [${i + 1}] failed: ${msg}`);
+        results.push({
+          question: q,
+          md_path: '',
+          json_path: '',
+          success: false,
+          citations_count: 0,
+          error: msg,
+        });
+      }
+
+      if (sleep_between_ms > 0 && i < questions.length - 1) {
+        await new Promise((r) => setTimeout(r, sleep_between_ms));
+      }
+    }
+
+    const succeeded = results.filter((r) => r.success).length;
+    log.success(
+      `[${reqId}] /batch-to-vault — ${succeeded}/${questions.length} written to ${absVaultDir}`
+    );
+
+    res.json({
+      success: true,
+      data: {
+        vault_dir: absVaultDir,
+        total: questions.length,
+        succeeded,
+        failed: questions.length - succeeded,
+        session_id: currentSession,
+        notebook: notebookMeta,
+        files: results,
+      },
+    });
+  } catch (error) {
+    log.error(
+      `[${reqId}] /batch-to-vault - Error: ${error instanceof Error ? error.message : String(error)}`
+    );
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : String(error),

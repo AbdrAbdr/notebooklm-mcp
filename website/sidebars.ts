@@ -17,7 +17,14 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Usage',
       collapsed: false,
-      items: ['API', 'BATCH-1000', 'CONTENT-MANAGEMENT', 'NOTEBOOK-LIBRARY', 'AUTO-DISCOVERY'],
+      items: [
+        'API',
+        'BATCH-1000',
+        'RTFM-INTEGRATION',
+        'CONTENT-MANAGEMENT',
+        'NOTEBOOK-LIBRARY',
+        'AUTO-DISCOVERY',
+      ],
     },
     {
       type: 'category',
