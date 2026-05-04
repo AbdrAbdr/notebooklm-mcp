@@ -4,7 +4,7 @@
 
 **Automate Google NotebookLM at scale. 33-endpoint HTTP REST API for n8n / Zapier / Make / curl, plus an MCP server for Claude Code / Cursor / Codex. Citation-backed Q&A, full Studio generation (audio · video · infographic · report · presentation · data table), multi-account rotation with auto-reauth.**
 
-> v1.5.9 — production-grade, batch-tested on overnight runs of 1 000+ questions. [Compare with `PleasePrompto/notebooklm-mcp` v2.0.0](https://roomi-fields.github.io/notebooklm-mcp/compare) to see when this project is the right pick (REST API, full Studio, auto-reauth) and when the MCP-only upstream is.
+> v1.6.0 — production-grade, batch-tested on overnight runs of 1 000+ questions. New: `/batch-to-vault` endpoint and [RTFM integration](./deployment/docs/14-RTFM-INTEGRATION.md) for offline retrieval at scale. [Compare with `PleasePrompto/notebooklm-mcp` v2.0.0](https://roomi-fields.github.io/notebooklm-mcp/compare) to see when this project is the right pick (REST API, full Studio, auto-reauth) and when the MCP-only upstream is.
 
 <!-- Badges -->
 
@@ -163,6 +163,13 @@ See [ROADMAP.md](./ROADMAP.md) for planned features and version history.
 
 **Latest releases:**
 
+- **v1.6.0** — `/batch-to-vault` endpoint + RTFM integration (`nblm-answer-v1` JSON Schema published at <https://schemas.roomi-fields.com/nblm-answer-v1.json>) for caching NotebookLM answers as a searchable markdown vault
+- **v1.5.9** — Restore `mcpName` field for MCP Registry npm-package ownership verification
+- **v1.5.8** — NotebookLM 2026 UI adaptations (icon-label sanitization, Discussion-panel recovery, count-based source detection) — PR #5 by @KhizarJamshaidIqbal
+- **v1.5.7** — Citation extraction selector fix (`.highlighted`) and Docker multi-stage build — PR #1 by @JulienCANTONI
+- **v1.5.6** — Citation extraction major rewrite (97% success rate), browser-verified auth at startup, profile auto-sync
+- **v1.5.5** — Multi-account state-path bug fix, Windows startup scripts, hidden-window MCP proxy
+- **v1.5.4** — Mid-session auto-reauth with stored credentials, TOTP support
 - **v1.5.3** — Docker deployment with noVNC for visual authentication + NAS support (Synology, QNAP)
 - **v1.5.2** — Notebook scraping from NotebookLM + Bulk delete + Bug fixes
 - **v1.5.1** — Multilingual UI support (FR/EN) with i18n selector system + E2E tests (76 tests)
