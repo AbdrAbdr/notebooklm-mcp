@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.4] - 2026-05-06
+
+### Added
+
+**Two previously orphaned NotebookLM management tools are now exposed via MCP:**
+
+- `create_notebook({ name?, show_browser? })` — creates a brand-new empty notebook directly in NotebookLM (no pre-existing share URL required, unlike `add_notebook` which only registers an already-created notebook into the local library). Returns the freshly minted `notebook_url` and `notebook_id` so the caller can chain `add_source`, `ask_question`, etc.
+- `delete_notebooks_from_nblm({ notebook_ids[], show_browser? })` — bulk-delete notebooks at the NotebookLM UI level (not just from the local library). Returns `{ deleted, failed, message }`. Pair it with `list_notebooks_from_nblm` to discover IDs.
+
+### Internal
+
+Audited the full tool surface: 30 `ToolHandlers` methods are now aligned 1:1 with 30 tool definitions and 30 dispatch cases. No more declared-but-unwired tools, no more handlers without a tool definition.
+
+---
+
 ## [1.7.3] - 2026-05-06
 
 ### Fixed

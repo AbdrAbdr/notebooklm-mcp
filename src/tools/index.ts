@@ -1189,6 +1189,65 @@ User: "Yes" → call remove_notebook`,
         },
       },
     },
+    {
+      name: 'create_notebook',
+      description:
+        'Create a brand-new empty notebook directly in NotebookLM (no pre-existing URL required, ' +
+        'unlike `add_notebook` which only registers an already-created notebook into the library).\n\n' +
+        'Returns the freshly minted `notebook_url` and `notebook_id` so the caller can chain ' +
+        '`add_source`, `ask_question`, etc. against it.\n\n' +
+        'Typical workflow:\n' +
+        '1) `create_notebook({ name?: "my-research" })` → `{ notebook_url, notebook_id }`\n' +
+        '2) `add_source({ notebook_url, source_type: "url", source: "https://..." })`\n' +
+        '3) `ask_question({ notebook_url, question: "..." })`\n\n' +
+        'Note: Requires authentication. Run `setup_auth` first if not authenticated.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description:
+              'Optional initial title for the notebook. NotebookLM will auto-name it if omitted ' +
+              '(usually "Untitled notebook"). The title can be edited later via the UI.',
+          },
+          show_browser: {
+            type: 'boolean',
+            description: 'Show browser window during creation. Default: false (headless).',
+          },
+        },
+      },
+    },
+    {
+      name: 'delete_notebooks_from_nblm',
+      description:
+        'Delete one or more notebooks directly from NotebookLM (UI-level deletion, ' +
+        'not just from the local library). Pass an array of notebook IDs (UUIDs from ' +
+        '`list_notebooks_from_nblm`).\n\n' +
+        'Returns `{ deleted: [...], failed: [...] }` so the caller can retry or report on partial failures.\n\n' +
+        'Use this to:\n' +
+        '- Bulk-clean up a NotebookLM account (e.g. test notebooks from automation runs)\n' +
+        '- Free up the 100-notebook free-tier quota\n' +
+        '- Remove notebooks no longer covered by your sources\n\n' +
+        'Warning: This is irreversible at the NotebookLM side. Confirm with the user before calling.\n' +
+        'Note: Requires authentication. Run `setup_auth` first if not authenticated.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          notebook_ids: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Array of NotebookLM notebook IDs (UUIDs) to delete. Use `list_notebooks_from_nblm` ' +
+              'to discover them.',
+          },
+          show_browser: {
+            type: 'boolean',
+            description: 'Show browser window during deletion. Default: false (headless).',
+          },
+        },
+        required: ['notebook_ids'],
+      },
+    },
   ];
 }
 

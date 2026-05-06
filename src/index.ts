@@ -604,6 +604,20 @@ class NotebookLMMCPServer {
             );
             break;
 
+          case 'create_notebook':
+            result = await this.toolHandlers.handleCreateNotebook(
+              args as { name?: string; show_browser?: boolean },
+              sendProgress
+            );
+            break;
+
+          case 'delete_notebooks_from_nblm':
+            result = await this.toolHandlers.handleDeleteNotebooksFromNblm(
+              args as { notebook_ids: string[]; show_browser?: boolean },
+              sendProgress
+            );
+            break;
+
           default:
             log.error(`❌ [MCP] Unknown tool: ${name}`);
             return {
