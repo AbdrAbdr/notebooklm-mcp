@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.6] - 2026-05-06
+
+### Fixed
+
+**Two bugs in tools that 1.7.4 exposed without runtime validation. Honest disclosure: I shipped both `create_notebook` and `delete_notebooks_from_nblm` in 1.7.4 without exercising them against a live NotebookLM session — only checked that the handler methods existed and the dispatch was wired. Both had latent issues that surfaced as soon as a real user ran them.**
+
+#### `create_notebook`
+
+Two regressions, both reported by an end-user agent that ran the tool against the live UI:
+
+- The tool returned a transitional URL like `https://notebooklm.google.com/notebook/creating/c` instead of the final notebook URL. Root cause: the `waitForURL` regex (`/notebook\//`) matched the transitional URL immediately rather than waiting for the redirect to the UUID-based URL. **Fix:** require a full v4 UUID in the URL pattern, then wait for `networkidle` before reading the URL.
+- The `name` parameter was silently ignored — every notebook came back as "Untitled notebook". Root cause: the rename used a generic `[contenteditable="true"], .notebook-title, h1` selector, took the first match (often the wrong element), typed via `Control+a`+`type`, and never verified the result. **Fix:** target ordered, specific selectors (aria-label / placeholder containing "title"/"Untitled"), use `fill` for `<input>` and `evaluate`+keystroke for contenteditable, then **read back the title** to verify the rename took. The tool now returns `name_applied: boolean` and `actual_name: string` so the caller knows whether to retry via the UI.
+
+#### `delete_notebooks_from_nblm`
+
+The handler used `button[aria-labelledby*="project-"]` as its primary selector — the same pattern that broke `list_notebooks_from_nblm` and was rewritten in 1.7.5. So the delete tool was very likely non-functional on the current NotebookLM DOM. **Fix:** locate each notebook tile through its stable `id="project-{UUID}-title"` element (a `page.evaluate()` walks up to the nearest card-like ancestor and stamps it with `data-nblm-target-card`), then resolve the menu button inside that marked card. Same id-pattern strategy that already powers `list_notebooks_from_nblm`.
+
+### Process note
+
+I am updating the project memory to require either a runtime smoke test or a full read of the handler implementation (selectors, `waitForURL`, post-action verification) before exposing any handler as a new MCP tool. Skipping that audit in 1.7.4 cost two extra releases.
+
+---
+
 ## [1.7.5] - 2026-05-06
 
 Three bugs reported by an end-user agent against 1.7.2–1.7.4. All three are fixed in this release.

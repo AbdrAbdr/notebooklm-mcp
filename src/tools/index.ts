@@ -1194,10 +1194,14 @@ User: "Yes" → call remove_notebook`,
       description:
         'Create a brand-new empty notebook directly in NotebookLM (no pre-existing URL required, ' +
         'unlike `add_notebook` which only registers an already-created notebook into the library).\n\n' +
-        'Returns the freshly minted `notebook_url` and `notebook_id` so the caller can chain ' +
-        '`add_source`, `ask_question`, etc. against it.\n\n' +
+        'Returns `{ notebook_url, notebook_id, name_applied, actual_name, message }`.\n' +
+        '- `notebook_url` / `notebook_id`: always the FINAL UUID-based URL (the tool waits past the ' +
+        '`/notebook/creating/c` transitional URL).\n' +
+        '- `name_applied` (boolean): whether the `name` parameter actually took effect. ' +
+        '`false` means the notebook is still "Untitled notebook" — rename via UI if needed.\n' +
+        '- `actual_name` (string): the title observed on the notebook after creation.\n\n' +
         'Typical workflow:\n' +
-        '1) `create_notebook({ name?: "my-research" })` → `{ notebook_url, notebook_id }`\n' +
+        '1) `create_notebook({ name?: "my-research" })` → `{ notebook_url, notebook_id, name_applied, actual_name }`\n' +
         '2) `add_source({ notebook_url, source_type: "url", source: "https://..." })`\n' +
         '3) `ask_question({ notebook_url, question: "..." })`\n\n' +
         'Note: Requires authentication. Run `setup_auth` first if not authenticated.',
@@ -3360,44 +3364,80 @@ export class ToolHandlers {
               timeout: 30000,
             });
 
-            // Wait for notebook cards to load
-            await page.waitForSelector('button[aria-labelledby*="project-"]', { timeout: 15000 });
+            // Wait for the homepage to render at least one notebook tile.
+            // The previous selector `button[aria-labelledby*="project-"]` no
+            // longer matches the current NotebookLM DOM (same root cause as
+            // the `list_notebooks_from_nblm` bug fixed in 1.7.5). The
+            // id-based pattern `id="project-{UUID}-title"` IS stable: the
+            // homepage emits one such element per notebook tile.
+            await page
+              .waitForSelector('[id^="project-"][id$="-title"]', { timeout: 15000 })
+              .catch(() => {
+                // Continue anyway — the next step will fail with a cleaner
+                // error message if there really are no notebooks.
+              });
             await randomDelay(1000, 2000);
 
-            // Find the notebook card by its project ID in aria-labelledby
-            const cardSelector = `button[aria-labelledby*="project-${notebookId}"]`;
-            const card = page.locator(cardSelector);
+            // Resolve the menu button for this notebook by walking up from
+            // its title element to the nearest clickable card-like ancestor.
+            //
+            // Doing the walk inside `page.evaluate()` is much more robust
+            // than chained Playwright locators because we can inspect the
+            // structure freely and pick the right ancestor regardless of
+            // whether NotebookLM wraps tiles in <button>, <a>, <div>, etc.
+            const titleId = `project-${notebookId}-title`;
+            const cardFound = await page.evaluate(`
+              (() => {
+                const titleEl = document.getElementById(${JSON.stringify(titleId)});
+                if (!titleEl) return false;
+                // Walk up to the card-like ancestor that contains both the
+                // title and the menu button. NotebookLM tiles are bounded
+                // by [role="link"] / a / button. We climb at most 6 levels.
+                let node = titleEl;
+                for (let i = 0; i < 6 && node; i++) {
+                  if (node.getAttribute && (
+                    node.getAttribute('role') === 'link' ||
+                    node.tagName === 'A' ||
+                    (node.tagName === 'BUTTON' && node !== titleEl)
+                  )) break;
+                  node = node.parentElement;
+                }
+                if (!node) return false;
+                // Mark the card so we can target it from outside.
+                node.setAttribute('data-nblm-target-card', '1');
+                return true;
+              })()
+            `);
 
-            if ((await card.count()) === 0) {
-              log.warning(`    ⚠️ Notebook not found: ${notebookId}`);
+            if (!cardFound) {
+              log.warning(`    ⚠️ Notebook tile not found on homepage: ${notebookId}`);
               failed.push(notebookId);
               continue;
             }
 
-            // Find the menu button (3-dot) for this card
-            // It's usually a sibling button with aria-label containing "menu" or "options"
-            const cardContainer = card.locator('..'); // Parent element
+            // Now use the marker we just stamped to find the menu button.
+            // The 3-dot menu sits inside the card (or alongside it depending
+            // on NotebookLM's current layout).
+            const cardContainer = page.locator('[data-nblm-target-card="1"]');
             const menuButton = cardContainer
               .locator(
-                'button[aria-label*="menu"], button[aria-label*="options"], button[aria-label*="Plus"], [class*="menu"]'
+                'button[aria-label*="menu" i], button[aria-label*="options" i], button[aria-label*="more" i], button[aria-label*="plus" i], button:has(mat-icon)'
               )
               .first();
 
-            if ((await menuButton.count()) === 0) {
-              // Try finding any button with 3 dots icon nearby
-              const anyMenuButton = cardContainer
-                .locator('button:has(mat-icon), button[class*="more"]')
-                .first();
-              if ((await anyMenuButton.count()) > 0) {
-                await anyMenuButton.click();
-              } else {
-                log.warning(`    ⚠️ Menu button not found for: ${notebookId}`);
-                failed.push(notebookId);
-                continue;
-              }
-            } else {
-              await menuButton.click();
+            if (!(await menuButton.isVisible({ timeout: 2000 }).catch(() => false))) {
+              log.warning(`    ⚠️ Menu button not found inside tile for: ${notebookId}`);
+              // Clean up our marker before bailing so it doesn't stick
+              // around and confuse the next iteration.
+              await page
+                .evaluate(
+                  `document.querySelectorAll('[data-nblm-target-card="1"]').forEach(n => n.removeAttribute('data-nblm-target-card'))`
+                )
+                .catch(() => {});
+              failed.push(notebookId);
+              continue;
             }
+            await menuButton.click();
 
             await randomDelay(500, 1000);
 
@@ -3482,6 +3522,10 @@ export class ToolHandlers {
     ToolResult<{
       notebook_url: string;
       notebook_id: string;
+      /** true if `name` was successfully applied (or no name was requested). false ⇒ notebook stayed as "Untitled notebook" and caller should rename it via the UI or another tool. */
+      name_applied: boolean;
+      /** Title actually observed on the notebook after the create+rename attempt. Empty string if no name was requested. */
+      actual_name: string;
       message: string;
     }>
   > {
@@ -3564,34 +3608,102 @@ export class ToolHandlers {
         await sendProgress?.('Waiting for notebook creation...', 3, 5);
         log.info('  ⏳ Waiting for new notebook to be created...');
 
-        // Wait for navigation to new notebook
-        await page.waitForURL(/notebooklm\.google\.com\/notebook\//, { timeout: 30000 });
-        await randomDelay(2000, 3000);
+        // Wait for navigation to the FINAL notebook URL.
+        //
+        // NotebookLM redirects through a transitional URL like
+        //   https://notebooklm.google.com/notebook/creating/c
+        // before landing on the real
+        //   https://notebooklm.google.com/notebook/{UUID}
+        //
+        // The previous regex `/notebook\//` matched the transitional URL
+        // immediately, so we returned `notebook/creating/c` to callers.
+        // Require a full v4 UUID in the path to be sure we've landed.
+        const NOTEBOOK_UUID_URL =
+          /notebooklm\.google\.com\/notebook\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}(?:\b|\/|$)/;
+        await page.waitForURL(NOTEBOOK_UUID_URL, { timeout: 30000 });
+        // Then wait for the page to settle so the title field is editable.
+        await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+        await randomDelay(1500, 2500);
 
-        // Get the new notebook URL
+        // Parse the final URL/UUID with the same strict pattern.
         const notebookUrl = page.url();
-        const notebookIdMatch = notebookUrl.match(/notebook\/([a-f0-9-]+)/);
-        const notebookId = notebookIdMatch ? notebookIdMatch[1] : 'unknown';
+        const notebookIdMatch = notebookUrl.match(
+          /notebook\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/
+        );
+        if (!notebookIdMatch) {
+          throw new Error(`Notebook landed on unexpected URL (no UUID): ${notebookUrl}`);
+        }
+        const notebookId = notebookIdMatch[1];
 
         await sendProgress?.('Notebook created!', 4, 5);
         log.success(`  ✅ New notebook created: ${notebookUrl}`);
 
-        // If name provided, try to rename the notebook
+        // If name provided, try to rename the notebook AND verify the
+        // rename actually took effect. Previous code clicked a generic
+        // selector (`[contenteditable="true"], .notebook-title, h1`),
+        // typed, and trusted the keystroke without verification — so when
+        // the click landed on the wrong element (anything else editable
+        // on the page) the notebook silently stayed "Untitled notebook".
+        let nameApplied = false;
+        let observedName = '';
         if (name) {
-          log.info(`  📝 Renaming notebook to: ${name}`);
-          try {
-            // Click on notebook title to edit
-            const titleSelector = '[contenteditable="true"], .notebook-title, h1';
-            const titleEl = page.locator(titleSelector).first();
-            if (await titleEl.isVisible({ timeout: 3000 })) {
-              await titleEl.click();
-              await page.keyboard.press('Control+a');
-              await page.keyboard.type(name, { delay: 50 });
-              await page.keyboard.press('Escape');
-              log.success(`  ✅ Notebook renamed to: ${name}`);
+          log.info(`  📝 Attempting rename to: ${name}`);
+          // Most-specific selectors first: aria-label or placeholder that
+          // explicitly indicate "title" / "Untitled". Generic contenteditable
+          // is the last resort.
+          const titleSelectors: Array<{ sel: string; via: 'fill' | 'type' }> = [
+            { sel: 'input[aria-label*="title" i]', via: 'fill' },
+            { sel: 'input[aria-label*="titre" i]', via: 'fill' },
+            { sel: 'input[placeholder*="Untitled" i]', via: 'fill' },
+            { sel: 'input[placeholder*="sans titre" i]', via: 'fill' },
+            { sel: '[role="textbox"][aria-label*="title" i]', via: 'type' },
+            { sel: '[contenteditable="true"][aria-label*="title" i]', via: 'type' },
+            // Last-resort generic — only used if the targeted ones fail.
+            { sel: '.notebook-title', via: 'type' },
+          ];
+
+          for (const { sel, via } of titleSelectors) {
+            try {
+              const el = page.locator(sel).first();
+              if (!(await el.isVisible({ timeout: 1500 }).catch(() => false))) continue;
+
+              if (via === 'fill') {
+                await el.click();
+                await el.fill(name);
+              } else {
+                await el.click();
+                await el.evaluate((node: unknown) => {
+                  const n = node as { textContent: string };
+                  n.textContent = '';
+                });
+                await page.keyboard.type(name, { delay: 30 });
+              }
+              await page.keyboard.press('Tab'); // commit the edit
+              await randomDelay(800, 1300);
+
+              // Verify by reading what's actually in the title element now.
+              const value =
+                (await el.inputValue().catch(() => null)) ??
+                (await el.textContent().catch(() => null)) ??
+                '';
+              observedName = value.trim();
+              if (observedName === name.trim()) {
+                log.success(`  ✅ Notebook renamed to: ${name} (selector: ${sel})`);
+                nameApplied = true;
+                break;
+              } else {
+                log.warning(
+                  `  ⚠️ Rename via ${sel} did not stick: title is "${observedName}", expected "${name}"`
+                );
+              }
+            } catch (e) {
+              log.warning(`  ⚠️ Rename selector ${sel} threw: ${e}`);
             }
-          } catch (e) {
-            log.warning(`  ⚠️ Could not rename notebook: ${e}`);
+          }
+          if (!nameApplied) {
+            log.warning(
+              `  ⚠️ All rename strategies failed — notebook stays as "${observedName || 'Untitled notebook'}". The 'name' param had no effect.`
+            );
           }
         }
 
@@ -3605,7 +3717,14 @@ export class ToolHandlers {
           data: {
             notebook_url: notebookUrl,
             notebook_id: notebookId,
-            message: `Successfully created new notebook${name ? ` "${name}"` : ''}`,
+            // Honest reporting: tell the caller whether the rename
+            // landed (false ⇒ notebook is still "Untitled notebook").
+            name_applied: name ? nameApplied : true,
+            actual_name: name ? observedName : '',
+            message:
+              name && !nameApplied
+                ? `Notebook created but rename to "${name}" failed — currently "${observedName || 'Untitled notebook'}". You may need to rename it via the UI.`
+                : `Successfully created new notebook${name ? ` "${name}"` : ''}`,
           },
         };
       } finally {
