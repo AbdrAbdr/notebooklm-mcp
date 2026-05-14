@@ -1,39 +1,56 @@
 # MCP Directories & Registries
 
-Tracking of all directories where `@roomi-fields/notebooklm-mcp` is listed or submitted.
+Tracking of all directories where `@roomi-fields/notebooklm-mcp` is listed or submitted, plus the release/distribution process that pushes changes to them.
+
+**Current version:** `1.7.9` · **Directory landscape re-scanned:** 2026-05-14
 
 ## Currently Listed
 
-| Directory                 | URL                                                                                                              | Notes                                                                                          |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| **Glama.ai**              | [glama.ai/mcp/servers/@roomi-fields/notebooklm-mcp](https://glama.ai/mcp/servers/@roomi-fields/notebooklm-mcp)   | Security A, Quality A, License A. Auto-indexed.                                                |
-| **PulseMCP**              | [pulsemcp.com/servers/pleaseprompto-notebooklm](https://www.pulsemcp.com/servers/pleaseprompto-notebooklm)       | #163 global, ~177k visitors. Auto-aggregated.                                                  |
-| **mcpservers.org**        | [mcpservers.org/servers/roomi-fields/notebooklm-mcp](https://mcpservers.org/servers/roomi-fields/notebooklm-mcp) | Full listing. Auto-indexed.                                                                    |
-| **MCPMarket.com**         | [mcpmarket.com/server/notebooklm](https://mcpmarket.com/server/notebooklm)                                       | Has Top 100 leaderboard.                                                                       |
-| **LobeHub**               | [lobehub.com/mcp/roomi-fields-notebooklm-mcp](https://lobehub.com/mcp/roomi-fields-notebooklm-mcp)               | Auto-indexed.                                                                                  |
-| **npm**                   | [npmjs.com/package/@roomi-fields/notebooklm-mcp](https://www.npmjs.com/package/@roomi-fields/notebooklm-mcp)     | v1.5.7 published with `mcpName` field.                                                         |
-| **Official MCP Registry** | [registry.modelcontextprotocol.io](https://registry.modelcontextprotocol.io/)                                    | `io.github.roomi-fields/notebooklm-mcp` v1.5.7, status active.                                 |
-| **Cursor Directory**      | [cursor.directory/mcp/notebooklm-mcp](https://cursor.directory/mcp/notebooklm-mcp)                               | Submitted via web form. Live.                                                                  |
-| **awesome-mcp-servers**   | [github.com/punkpeye/awesome-mcp-servers](https://github.com/punkpeye/awesome-mcp-servers)                       | 79.6k stars. Merged via [PR #2467](https://github.com/punkpeye/awesome-mcp-servers/pull/2467). |
+### Primary distribution channels (we control)
+
+| Channel                      | URL                                                                                                          | Notes                                                                                                                                                                                                                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **npm**                      | [npmjs.com/package/@roomi-fields/notebooklm-mcp](https://www.npmjs.com/package/@roomi-fields/notebooklm-mcp) | Canonical install. Auto-published on tag push by `.github/workflows/release.yml`.                                                                                                                                                                                        |
+| **GitHub releases**          | [github.com/roomi-fields/notebooklm-mcp/releases](https://github.com/roomi-fields/notebooklm-mcp/releases)   | Release notes extracted from `CHANGELOG.md` per version, created automatically alongside the npm publish.                                                                                                                                                                |
+| **Claude Code marketplace**  | [github.com/roomi-fields/claude-plugins](https://github.com/roomi-fields/claude-plugins)                     | Aggregated marketplace (NotebookLM + RTFM). Upstream plugin manifest lives here at `.claude-plugin/plugin.json`. Install: `/plugin marketplace add roomi-fields/claude-plugins` + `/plugin install notebooklm@roomi-fields`.                                             |
+| **Official MCP Registry**    | [registry.modelcontextprotocol.io](https://registry.modelcontextprotocol.io/)                                | `io.github.roomi-fields/notebooklm-mcp`. Last manual publish via `mcp-publisher` (see process section). `mcpName` declared in `package.json`.                                                                                                                            |
+| **Docs site (GitHub Pages)** | [roomi-fields.github.io/notebooklm-mcp](https://roomi-fields.github.io/notebooklm-mcp/)                      | Docusaurus, auto-deployed on push to `main` by `.github/workflows/deploy-docs.yml`. Source under `website/`.                                                                                                                                                             |
+| **Schema host**              | [schemas.roomi-fields.com/nblm-answer-v1.json](https://schemas.roomi-fields.com/nblm-answer-v1.json)         | Canonical home of the `nblm-answer-v1` JSON Schema, mirrored from `schemas/nblm-answer-v1.json` in this repo. Also embedded in `deployment/docs/14-RTFM-INTEGRATION.md` and referenced by `src/utils/vault-writer.ts`. Bump to v2 on breaking changes — never mutate v1. |
+
+### Auto-indexed third-party directories
+
+| Directory                        | URL                                                                                                              | Notes                                                                                                                                                                                                                                               |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Glama.ai**                     | [glama.ai/mcp/servers/@roomi-fields/notebooklm-mcp](https://glama.ai/mcp/servers/@roomi-fields/notebooklm-mcp)   | Security A, Quality A, License A. Auto-indexed. Tries to build their own Dockerfile (pnpm + Node 24) — see "Glama build" in process section below.                                                                                                  |
+| **PulseMCP**                     | [pulsemcp.com/servers/pleaseprompto-notebooklm](https://www.pulsemcp.com/servers/pleaseprompto-notebooklm)       | ~14.9k servers tracked, largest hand-reviewed directory. Auto-aggregated.                                                                                                                                                                           |
+| **mcpservers.org**               | [mcpservers.org/servers/roomi-fields/notebooklm-mcp](https://mcpservers.org/servers/roomi-fields/notebooklm-mcp) | Full listing. Auto-indexed. **This is the source for [`wong2/awesome-mcp-servers`](https://github.com/wong2/awesome-mcp-servers) (~3.6k★)** — that repo no longer takes PRs, it pulls from mcpservers.org/submit. So we're already in wong2's list. |
+| **MCPMarket.com**                | [mcpmarket.com/server/notebooklm](https://mcpmarket.com/server/notebooklm)                                       | Has Top 100 leaderboard.                                                                                                                                                                                                                            |
+| **LobeHub**                      | [lobehub.com/mcp/roomi-fields-notebooklm-mcp](https://lobehub.com/mcp/roomi-fields-notebooklm-mcp)               | Auto-indexed.                                                                                                                                                                                                                                       |
+| **Cursor Directory**             | [cursor.directory/mcp/notebooklm-mcp](https://cursor.directory/mcp/notebooklm-mcp)                               | Submitted via web form. Live.                                                                                                                                                                                                                       |
+| **punkpeye/awesome-mcp-servers** | [github.com/punkpeye/awesome-mcp-servers](https://github.com/punkpeye/awesome-mcp-servers)                       | ~79.6k stars. Merged via [PR #2467](https://github.com/punkpeye/awesome-mcp-servers/pull/2467).                                                                                                                                                     |
+| **best-of-mcp-servers**          | [github.com/tolkonepiu/best-of-mcp-servers](https://github.com/tolkonepiu/best-of-mcp-servers)                   | Auto-ranked weekly from GitHub + package-manager metrics. No submission — **verify we appear** once stars/downloads cross their threshold.                                                                                                          |
 
 ## Pending Review
 
-| Directory             | Submission          | Date       | Link                                                                         |
-| --------------------- | ------------------- | ---------- | ---------------------------------------------------------------------------- |
-| **Cline Marketplace** | Issue               | 2026-02-27 | [Issue #703](https://github.com/cline/mcp-marketplace/issues/703)            |
-| **mcp.so**            | Comment on Issue #1 | 2026-02-27 | [Comment](https://github.com/chatmcp/mcpso/issues/1#issuecomment-3971662494) |
+| Directory                         | Submission                                        | Date       | Link / Notes                                                                                                                                                                                      |
+| --------------------------------- | ------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **appcypher/awesome-mcp-servers** | GitHub PR — added to the **Note Taking** category | 2026-05-14 | ~5k★. PR adds one line; awaiting maintainer merge.                                                                                                                                                |
+| **Smithery**                      | `smithery.yaml` committed to repo root            | 2026-05-14 | ~6k servers. Smithery discovers stdio servers via the `smithery.yaml` it finds in the repo. Verify the listing appears at smithery.ai; may also need a dashboard submit (their docs are in flux). |
+| **Cline Marketplace**             | Issue                                             | 2026-02-27 | [Issue #703](https://github.com/cline/mcp-marketplace/issues/703) — **blocked on a 400×400 PNG logo** (not yet created).                                                                          |
+| **mcp.so**                        | Comment on Issue #1 (never landed)                | 2026-02-27 | ~19.7k servers, largest by volume. The old issue-comment route stalled — **resubmit via their current web form** at mcp.so.                                                                       |
 
 ## Not Yet Submitted (Tier 2)
 
-| Directory                                    | How to Submit                                             | Priority |
-| -------------------------------------------- | --------------------------------------------------------- | -------- |
-| **FindMCP.dev**                              | Web form at findmcp.dev (~2 min)                          | Medium   |
-| **wong2/awesome-mcp-servers** (3.6k stars)   | GitHub PR                                                 | Medium   |
-| **appcypher/awesome-mcp-servers** (5k stars) | GitHub PR                                                 | Medium   |
-| **MCPIndex.net**                             | Contact form at mcpindex.net/en/contact                   | Medium   |
-| **MCPList.ai**                               | Web form                                                  | Medium   |
-| **Docker MCP Catalog**                       | PR on github.com/docker/mcp-registry (needs Docker image) | Medium   |
-| **Windsurf Directory**                       | windsurf.run/mcp                                          | Low      |
+| Directory              | How to Submit                                                                                | Priority |
+| ---------------------- | -------------------------------------------------------------------------------------------- | -------- |
+| **mcp.directory**      | Web form at mcp.directory — ~3k servers, one-click install for Cursor/VS Code/Claude/ChatGPT | High     |
+| **PopularAiTools.ai**  | Web form — ~6.9k servers, accepts manual submissions                                         | Medium   |
+| **mcp-awesome.com**    | Web form — ~1.2k quality-verified servers                                                    | Medium   |
+| **FindMCP.dev**        | Web form at findmcp.dev (~2 min)                                                             | Medium   |
+| **MCPIndex.net**       | Contact form at mcpindex.net/en/contact                                                      | Medium   |
+| **MCPList.ai**         | Web form                                                                                     | Medium   |
+| **Docker MCP Catalog** | PR on github.com/docker/mcp-registry (needs Docker image)                                    | Medium   |
+| **Windsurf Directory** | windsurf.run/mcp                                                                             | Low      |
 
 ## Not Yet Submitted (Tier 3)
 
@@ -63,7 +80,41 @@ Tracking of all directories where `@roomi-fields/notebooklm-mcp` is listed or su
 | **GitHub notifications**   | Enabled on all 13 public repos                          | Watch → All Activity                                                        |
 | **Cline logo**             | Not yet created                                         | 400x400 PNG needed for Cline Marketplace submission                         |
 
-## How to Complete Official MCP Registry
+## Release & Distribution Process
+
+### 1. Version bump (one source, propagated)
+
+The version number lives in **5 places** that must stay in sync. Run `npm run version:sync` after editing `package.json`:
+
+| File                           | Field                                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------- |
+| `package.json`                 | `version` (source of truth)                                                           |
+| `.claude-plugin/plugin.json`   | `version` AND `mcpServers.notebooklm.args[1]` (the `@<version>` pin — see note below) |
+| `website/docusaurus.config.ts` | `softwareVersion` in the SoftwareApplication JSON-LD                                  |
+| `README.md`                    | Latest-version mention in the hero / latest-releases bullets                          |
+
+CI gate: `.github/workflows/release.yml` runs `npm run version:check` before publish — release fails if anything drifts. The sync script uses **regex replace** on the target fields, not `JSON.parse + JSON.stringify`, to avoid fighting prettier's array layout (see `feedback_version_sync_prettier.md`).
+
+> ⚠️ **The `@<version>` pin in `plugin.json.mcpServers.notebooklm.args` is mandatory, not cosmetic.** Without it, `/plugin marketplace update` does NOT actually upgrade the running MCP server — npx reuses the `_npx/<hash>/` cache. Bit us in 1.7.4 → users stuck on 1.7.2.
+
+### 2. Tag → CI → npm + GitHub release
+
+```bash
+git tag v1.7.9
+git push --tags
+```
+
+That triggers `.github/workflows/release.yml`:
+
+1. `npm ci` (lockfile-aware; `overrides` block forces ip-address ≥10.2.0 for GHSA-v2v4-37r5-5v8g)
+2. `npm run version:check` — fails the build if any of the 5 sync targets drifted
+3. `npm run build` (tsc + i18n copy + `chmod 755` on `dist/index.js` and `dist/stdio-http-proxy.js`)
+4. `npm publish --access public`
+5. Extract CHANGELOG section for this version → create GitHub release with notes
+
+### 3. Official MCP Registry (manual publish)
+
+npm publish does **not** propagate to `registry.modelcontextprotocol.io` — that registry needs an explicit publish via the `mcp-publisher` CLI. Do this after a notable release:
 
 ```bash
 cd /mnt/d/path/to/notebooklm-mcp
@@ -71,14 +122,50 @@ cd /mnt/d/path/to/notebooklm-mcp
 # 1. Login (opens browser for GitHub device flow)
 ./mcp-publisher login github
 
-# 2. Publish
+# 2. Publish (reads server.json + package.json mcpName)
 ./mcp-publisher publish
 
 # 3. Verify
 curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.roomi-fields/notebooklm-mcp"
 ```
 
-## Files Related to Registry
+### 4. Claude Code marketplace propagation
 
-- `server.json` — Official MCP Registry metadata
-- `package.json` — Contains `mcpName: "io.github.roomi-fields/notebooklm-mcp"`
+The aggregated marketplace at `roomi-fields/claude-plugins` references the upstream `.claude-plugin/plugin.json` in this repo. End users upgrade with:
+
+```
+/plugin marketplace update roomi-fields
+/reload-plugins
+```
+
+> ⚠️ There is **no** `/plugin update <name>` command — that's a common mistake (see `feedback_claude_code_plugin_commands.md`). The marketplace must be updated, then plugins reloaded.
+
+If a user is stuck on an old npx cache: the `@<version>` pin in `plugin.json.mcpServers.notebooklm.args` fixes this for new installs starting from 1.7.5+. For pre-1.7.5 installs, the user has to manually clear `~/.npm/_npx/`.
+
+### 5. Glama build (auto-rebuild, occasionally flaky)
+
+Glama auto-rebuilds the Docker image on each release commit using **their own** Dockerfile (not ours):
+
+- Base: `debian:bookworm-slim`
+- Node 24 + `pnpm@10.14.0` + `mcp-proxy@6.4.3` globally
+- `pnpm install && pnpm run build`
+- CMD: `mcp-proxy node dist/index.js`
+
+**Known infra fragility**: their builder can ECONNRESET while pulling `docker.io/library/debian:bookworm-slim` metadata. When that happens, the build aborts before `pnpm install` even runs. Retry from the admin UI at `https://glama.ai/mcp/servers/roomi-fields/notebooklm-mcp/admin/dockerfile/` (re-save the build spec to relaunch, or click Retry on the failed test detail page).
+
+**Latent pnpm/npm gap**: our `overrides` block in `package.json` is **npm-only**. pnpm reads `pnpm.overrides`. Without a mirror, the Glama image would resolve `ip-address@10.1.0` (vulnerable) instead of the pinned `^10.2.0`. Add a `pnpm.overrides` mirror if/when Glama enables vulnerability scanning on their image, or migrate to a `pnpm-lock.yaml` in-repo.
+
+## Files Related to Distribution
+
+| File                                | Purpose                                                                                                        |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `package.json`                      | Source of truth for version. Contains `mcpName`, `bin`, `files`, `overrides`, build scripts.                   |
+| `package-lock.json`                 | Lockfile — required to be in sync with `package.json` for `npm ci` to succeed in CI.                           |
+| `server.json`                       | Official MCP Registry metadata (consumed by `mcp-publisher`).                                                  |
+| `.claude-plugin/plugin.json`        | Claude Code plugin manifest. Pinned version in `mcpServers.notebooklm.args` is load-bearing.                   |
+| `scripts/sync-version.mjs`          | Propagates `package.json` version to plugin manifest, docusaurus config, README.                               |
+| `.github/workflows/release.yml`     | Tag-driven: `version:check` → build → npm publish → GitHub release.                                            |
+| `.github/workflows/deploy-docs.yml` | Push-to-main: builds Docusaurus, deploys to `gh-pages` branch.                                                 |
+| `Dockerfile`                        | Our local image (not used by Glama — Glama auto-generates its own).                                            |
+| `smithery.yaml`                     | Smithery discovery config — declares the stdio launch command (`npx -y @roomi-fields/notebooklm-mcp@latest`).  |
+| `CHANGELOG.md`                      | Per-version release notes. Section between `## [x.y.z]` headings is extracted into GitHub release notes by CI. |
