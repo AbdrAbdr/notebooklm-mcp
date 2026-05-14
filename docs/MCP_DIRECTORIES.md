@@ -32,25 +32,34 @@ Tracking of all directories where `@roomi-fields/notebooklm-mcp` is listed or su
 
 ## Pending Review
 
-| Directory                         | Submission                                        | Date       | Link / Notes                                                                                                                                                                                      |
-| --------------------------------- | ------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **appcypher/awesome-mcp-servers** | GitHub PR — added to the **Note Taking** category | 2026-05-14 | ~5k★. PR adds one line; awaiting maintainer merge.                                                                                                                                                |
-| **Smithery**                      | `smithery.yaml` committed to repo root            | 2026-05-14 | ~6k servers. Smithery discovers stdio servers via the `smithery.yaml` it finds in the repo. Verify the listing appears at smithery.ai; may also need a dashboard submit (their docs are in flux). |
-| **Cline Marketplace**             | Issue                                             | 2026-02-27 | [Issue #703](https://github.com/cline/mcp-marketplace/issues/703) — **blocked on a 400×400 PNG logo** (not yet created).                                                                          |
-| **mcp.so**                        | Comment on Issue #1 (never landed)                | 2026-02-27 | ~19.7k servers, largest by volume. The old issue-comment route stalled — **resubmit via their current web form** at mcp.so.                                                                       |
+| Directory             | Submission                             | Date       | Link / Notes                                                                                                                                                                                                                                                                                           |
+| --------------------- | -------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Cline Marketplace** | Issue                                  | 2026-02-27 | [Issue #703](https://github.com/cline/mcp-marketplace/issues/703). Logo ready: `assets/notebooklm-mcp-logo-400.png` (400×400). Post it on the issue to unblock.                                                                                                                                        |
+| **Smithery**          | `smithery.yaml` committed to repo root | 2026-05-14 | ~6k servers. **`smithery.yaml` is the legacy discovery format** — modern Smithery (2026) wants either a public HTTPS URL or an `.mcpb` bundle for stdio servers. Since this server needs a local Chrome profile + Google auth, it can't be hosted; the realistic path is publishing an `.mcpb` bundle. |
+| **mcp.so**            | Comment on Issue #1 (never landed)     | 2026-02-27 | ~19.7k servers, largest by volume. The old issue-comment route stalled — **resubmit via their current web form** at mcp.so.                                                                                                                                                                            |
+
+## Closed to Submissions
+
+| Directory                         | Notes                                                                                                                                                                                          |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **appcypher/awesome-mcp-servers** | ~5k★ but **PRs and Issues are both disabled** by the owner (verified 2026-05-14). No submission path. A ready branch sits on the `roomi-fields/awesome-mcp-servers-2` fork if it ever reopens. |
 
 ## Not Yet Submitted (Tier 2)
 
 | Directory              | How to Submit                                                                                | Priority |
 | ---------------------- | -------------------------------------------------------------------------------------------- | -------- |
 | **mcp.directory**      | Web form at mcp.directory — ~3k servers, one-click install for Cursor/VS Code/Claude/ChatGPT | High     |
-| **PopularAiTools.ai**  | Web form — ~6.9k servers, accepts manual submissions                                         | Medium   |
-| **mcp-awesome.com**    | Web form — ~1.2k quality-verified servers                                                    | Medium   |
 | **FindMCP.dev**        | Web form at findmcp.dev (~2 min)                                                             | Medium   |
 | **MCPIndex.net**       | Contact form at mcpindex.net/en/contact                                                      | Medium   |
 | **MCPList.ai**         | Web form                                                                                     | Medium   |
 | **Docker MCP Catalog** | PR on github.com/docker/mcp-registry (needs Docker image)                                    | Medium   |
 | **Windsurf Directory** | windsurf.run/mcp                                                                             | Low      |
+
+### Verified low-value (2026-05-14 scan) — deprioritised
+
+- **best-of-mcp-servers** — we don't appear; it's threshold-ranked, revisit once stars/downloads grow.
+- **mcp-awesome.com** — the "1.2k servers" claim is marketing; the live site listed ~18. Skip.
+- **PopularAiTools.ai** — already listed, but the entry is low-quality and ranks below PleasePrompto. Not worth chasing; would need their editorial process to improve.
 
 ## Not Yet Submitted (Tier 3)
 
