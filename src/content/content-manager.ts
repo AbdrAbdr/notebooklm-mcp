@@ -494,6 +494,11 @@ export class ContentManager {
         ...i18nSelectors('button:has-text("{text}")', 'sourceTypes', 'website'),
         ...i18nSelectors('button:has-text("{text}")', 'sourceTypes', 'link'),
         ...i18nSelectors('button:has-text("{text}")', 'sourceTypes', 'url'),
+        // 2026 redesign: source types are Angular Material chips
+        ...i18nSelectors('mat-chip:has-text("{text}")', 'sourceTypes', 'website'),
+        ...i18nSelectors('mat-mdc-chip:has-text("{text}")', 'sourceTypes', 'website'),
+        ...i18nSelectors('[role="button"]:has-text("{text}")', 'sourceTypes', 'website'),
+        ...i18nSelectors('[role="button"]:has-text("{text}")', 'sourceTypes', 'link'),
         // New UI (2025+): source types may be spans, divs, or clickable list items
         ...i18nSelectors('span:has-text("{text}")', 'sourceTypes', 'website'),
         ...i18nSelectors('div:has-text("{text}")', 'sourceTypes', 'website'),
