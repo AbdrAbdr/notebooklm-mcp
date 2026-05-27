@@ -93,6 +93,17 @@ export class ContentManager {
 
     try {
       const existingSourceNames = await this.getAllSourceLabels();
+      // Capture the source-row count BEFORE opening the upload dialog. The
+      // 2026 UI adds the new row to the DOM almost instantly after the user
+      // clicks Insert/Upload, so a snapshot taken later by
+      // waitForSourceProcessing would already read N+1 and never observe a
+      // count increase. We thread this baseline through each upload method.
+      let initialSourceCount = -1;
+      try {
+        initialSourceCount = await this.page.locator('.single-source-container').count();
+      } catch {
+        /* ignore — waitForSourceProcessing falls back to its own snapshot */
+      }
 
       // Click "Add source" button
       await this.clickAddSource();
@@ -115,7 +126,12 @@ export class ContentManager {
         case 'file':
           return await this.uploadFile(input, expectedNotebookUuid, existingSourceNames);
         case 'url':
-          return await this.uploadUrl(input, expectedNotebookUuid, existingSourceNames);
+          return await this.uploadUrl(
+            input,
+            expectedNotebookUuid,
+            existingSourceNames,
+            initialSourceCount
+          );
         case 'text':
           return await this.uploadText(input, expectedNotebookUuid, existingSourceNames);
         case 'google_drive':
@@ -478,7 +494,8 @@ export class ContentManager {
   private async uploadUrl(
     input: SourceUploadInput,
     expectedNotebookUuid?: string,
-    previousSourceNames: string[] = []
+    previousSourceNames: string[] = [],
+    knownInitialCount?: number
   ): Promise<SourceUploadResult> {
     if (!input.url) {
       return { success: false, error: 'URL is required' };
@@ -729,12 +746,14 @@ export class ContentManager {
           /* dialog may stay open on success (multi-upload UX) — handled later */
         });
 
-      // Wait for processing
+      // Wait for processing — pass the pre-baseline count captured by
+      // addSource() so detection works on the 2026 UI (see waitForSourceProcessing).
       const result = await this.waitForSourceProcessing(
         input.title || input.url,
         undefined,
         expectedNotebookUuid,
-        previousSourceNames
+        previousSourceNames,
+        knownInitialCount
       );
 
       return result;
@@ -1198,24 +1217,33 @@ export class ContentManager {
     sourceName: string,
     _textPreview?: string,
     expectedNotebookUuid?: string,
-    previousSourceNames: string[] = []
+    previousSourceNames: string[] = [],
+    knownInitialCount?: number
   ): Promise<SourceUploadResult> {
     log.info(`  ⏳ Waiting for source processing: ${sourceName}`);
 
     const timeout = 90000; // 1.5 minutes (sources can take time)
     const startTime = Date.now();
 
-    // COUNT-BASED DETECTION (primary method for 2025 UI):
-    // Capture source count NOW — dialog is still open, source not yet added to DOM.
-    // Later, if count increases, we know a source was successfully added.
-    let initialSourceCount = -1;
-    let initialSourceLabels: string[] = [];
-    try {
-      initialSourceCount = await this.page.locator('.single-source-container').count();
-      log.info(`  📊 Source count before processing: ${initialSourceCount}`);
-      initialSourceLabels = await this.getAllSourceLabels();
-    } catch {
-      /* ignore */
+    // COUNT-BASED DETECTION (primary method for 2025+ UI):
+    // The 2026 UI adds the new source row to the DOM *before* this function
+    // runs, so capturing the count here would already read N+1 and the
+    // `currentCount > initialSourceCount` check would never trip. Callers
+    // therefore capture the baseline BEFORE opening the dialog and pass it
+    // through as `knownInitialCount`. We only fall back to a fresh snapshot
+    // for internal callers that don't know the pre-baseline (e.g. notes).
+    let initialSourceCount = knownInitialCount ?? -1;
+    let initialSourceLabels: string[] = previousSourceNames;
+    if (knownInitialCount !== undefined) {
+      log.info(`  📊 Source count before processing (from caller): ${initialSourceCount}`);
+    } else {
+      try {
+        initialSourceCount = await this.page.locator('.single-source-container').count();
+        log.info(`  📊 Source count before processing (snapshot): ${initialSourceCount}`);
+        initialSourceLabels = await this.getAllSourceLabels();
+      } catch {
+        /* ignore */
+      }
     }
 
     // First, wait a bit for the dialog to close (indicates upload started)
