@@ -28,6 +28,40 @@ import type {
 } from './types.js';
 
 const DEFAULT_DAILY_QUOTA = 50; // NotebookLM free tier
+const MAX_ACCOUNTS = 10;
+
+export interface AccountPoolEntry {
+  id: string;
+  email: string;
+  enabled: boolean;
+  priority: number;
+  hasCredentials: boolean;
+  hasTotp: boolean;
+  createdAt: string;
+  notes?: string;
+  quotaUsed: number | null;
+  quotaLimit: number | null;
+  quotaRemaining: number | null;
+  quotaResetAt: string | null;
+  sessionStatus: AccountState['sessionStatus'];
+  consecutiveFailures: number;
+  lastActivity: string | null;
+  lastLoginAttempt: string | null;
+  lastError?: string;
+}
+
+export interface AccountPoolOverview {
+  maxAccounts: number;
+  totalConfigured: number;
+  loadedAccounts: number;
+  enabledAccounts: number;
+  availableAccounts: number;
+  exhaustedAccounts: number;
+  unhealthyAccounts: number;
+  rotationStrategy: RotationStrategy;
+  autoLoginEnabled: boolean;
+  accounts: AccountPoolEntry[];
+}
 
 export class AccountManager {
   private configPath: string;
@@ -229,6 +263,10 @@ export class AccountManager {
       throw new Error('Account manager not initialized');
     }
 
+    if (this.config.accounts.length >= MAX_ACCOUNTS) {
+      throw new Error(`NotebookLM account pool supports up to ${MAX_ACCOUNTS} accounts`);
+    }
+
     // Generate unique ID
     const id = `account-${Date.now()}`;
 
@@ -317,6 +355,117 @@ export class AccountManager {
    */
   getAccount(accountId: string): Account | undefined {
     return this.accounts.get(accountId);
+  }
+
+  /**
+   * Enable or disable an account without deleting its stored profile/state.
+   */
+  async setAccountEnabled(accountId: string, enabled: boolean): Promise<boolean> {
+    if (!this.config) return false;
+
+    const accountConfig = this.config.accounts.find((a) => a.id === accountId);
+    if (!accountConfig) {
+      log.warning(`⚠️  Account config not found: ${accountId}`);
+      return false;
+    }
+
+    accountConfig.enabled = enabled;
+    await this.saveConfig();
+
+    if (enabled) {
+      const account = await this.loadAccount(accountConfig);
+      this.accounts.set(accountId, account);
+    } else {
+      this.accounts.delete(accountId);
+    }
+
+    log.success(
+      `✅ Account ${enabled ? 'enabled' : 'disabled'}: ${maskEmail(accountConfig.email)}`
+    );
+    return true;
+  }
+
+  /**
+   * Update account priority for failover routing.
+   */
+  async setAccountPriority(accountId: string, priority: number): Promise<boolean> {
+    if (!this.config) return false;
+
+    const accountConfig = this.config.accounts.find((a) => a.id === accountId);
+    if (!accountConfig) {
+      log.warning(`⚠️  Account config not found: ${accountId}`);
+      return false;
+    }
+
+    accountConfig.priority = Math.max(1, Math.floor(priority));
+    await this.saveConfig();
+
+    const loaded = this.accounts.get(accountId);
+    if (loaded) {
+      loaded.config.priority = accountConfig.priority;
+    }
+
+    log.success(
+      `✅ Account priority updated: ${maskEmail(accountConfig.email)} → ${accountConfig.priority}`
+    );
+    return true;
+  }
+
+  /**
+   * Summarize the whole account pool without exposing credentials or cookies.
+   */
+  getPoolOverview(): AccountPoolOverview {
+    const configuredAccounts = this.config?.accounts ?? [];
+    const accounts = configuredAccounts.map((config) => {
+      const loaded = this.accounts.get(config.id);
+      const quotaUsed = loaded?.quota.used ?? null;
+      const quotaLimit = loaded?.quota.limit ?? null;
+      const quotaRemaining =
+        quotaUsed !== null && quotaLimit !== null ? Math.max(0, quotaLimit - quotaUsed) : null;
+
+      return {
+        id: config.id,
+        email: maskEmail(config.email),
+        enabled: config.enabled,
+        priority: config.priority,
+        hasCredentials: config.hasCredentials,
+        hasTotp: config.hasTotp,
+        createdAt: config.createdAt,
+        notes: config.notes,
+        quotaUsed,
+        quotaLimit,
+        quotaRemaining,
+        quotaResetAt: loaded?.quota.resetAt ?? null,
+        sessionStatus: loaded?.state.sessionStatus ?? 'unknown',
+        consecutiveFailures: loaded?.state.consecutiveFailures ?? 0,
+        lastActivity: loaded?.state.lastActivity ?? null,
+        lastLoginAttempt: loaded?.state.lastLoginAttempt ?? null,
+        lastError: loaded?.state.lastError,
+      };
+    });
+
+    const loadedAccounts = Array.from(this.accounts.values());
+    const enabledAccounts = configuredAccounts.filter((account) => account.enabled).length;
+    const availableAccounts = this.getAvailableAccounts().length;
+    const exhaustedAccounts = loadedAccounts.filter(
+      (account) => account.quota.used >= account.quota.limit
+    ).length;
+    const unhealthyAccounts = loadedAccounts.filter(
+      (account) => account.state.sessionStatus !== 'valid' || account.state.consecutiveFailures >= 3
+    ).length;
+
+    return {
+      maxAccounts: MAX_ACCOUNTS,
+      totalConfigured: configuredAccounts.length,
+      loadedAccounts: loadedAccounts.length,
+      enabledAccounts,
+      availableAccounts,
+      exhaustedAccounts,
+      unhealthyAccounts,
+      rotationStrategy: this.getRotationStrategy(),
+      autoLoginEnabled: this.isAutoLoginEnabled(),
+      accounts,
+    };
   }
 
   /**

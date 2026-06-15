@@ -1,4 +1,4 @@
-# NotebookLM MCP Server - Docker Image
+# NotebookLM MCP Server - Multi-stage Docker Image
 #
 # Build: docker build -t notebooklm-mcp .
 # Run:   docker run -p 3000:3000 -p 6080:6080 -v notebooklm-data:/data notebooklm-mcp
@@ -7,7 +7,29 @@
 #   3000 - MCP HTTP API
 #   6080 - noVNC web interface (for initial Google auth setup)
 
-# Use Node.js with Debian for Playwright compatibility
+# ============================================================
+# Stage 1: Builder - compile TypeScript to JavaScript
+# ============================================================
+FROM node:20-bookworm-slim AS builder
+
+WORKDIR /build
+
+# Copy package files first for better caching
+COPY package*.json ./
+
+# Install ALL dependencies (including devDependencies for tsc)
+RUN npm ci --ignore-scripts
+
+# Copy source code and tsconfig
+COPY tsconfig.json ./
+COPY src/ ./src/
+
+# Build TypeScript -> dist/
+RUN npx tsc && npm run build:i18n
+
+# ============================================================
+# Stage 2: Runtime - production image with Chromium + noVNC
+# ============================================================
 FROM node:20-bookworm-slim
 
 # Install dependencies for Playwright/Chromium + noVNC
@@ -62,21 +84,25 @@ COPY --chown=notebooklm:notebooklm package*.json ./
 # Switch to non-root user
 USER notebooklm
 
-# Install dependencies (--ignore-scripts to skip husky prepare)
+# Install production dependencies only (--ignore-scripts to skip husky prepare)
 RUN npm ci --omit=dev --ignore-scripts
 
 # Install browsers via patchright (must match the patchright version)
 RUN npx patchright install chromium
 
-# Copy built application and scripts
-COPY --chown=notebooklm:notebooklm dist/ ./dist/
+# Copy compiled output from builder stage
+COPY --from=builder --chown=notebooklm:notebooklm /build/dist/ ./dist/
+
+# Copy scripts
 COPY --chown=notebooklm:notebooklm scripts/ ./scripts/
-COPY --chown=notebooklm:notebooklm package.json ./
 
 # Make scripts executable
 USER root
 RUN chmod +x /app/scripts/*.sh
-USER notebooklm
+
+# WE WILL LEAVE THE USER AS ROOT SO THE ENTRYPOINT CAN CHOWN THE VOLUME,
+# AND THEN THE ENTRYPOINT WILL DROP PRIVILEGES TO 'notebooklm' WHEN RUNNING NODE
+# USER notebooklm
 
 # Environment variables
 ENV NODE_ENV=production \
@@ -98,7 +124,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
 # Data volume
-VOLUME ["/data"]
+# VOLUME ["/data"]
 
 # Start with entrypoint (VNC + Node.js)
 CMD ["/app/scripts/docker-entrypoint.sh"]

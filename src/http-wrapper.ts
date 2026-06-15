@@ -7,7 +7,9 @@
 
 import express, { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
+import fs from 'fs/promises';
 import net from 'net';
+import path from 'path';
 import { execSync } from 'child_process';
 import { AuthManager } from './auth/auth-manager.js';
 import { SessionManager } from './session/session-manager.js';
@@ -15,6 +17,9 @@ import { NotebookLibrary } from './library/notebook-library.js';
 import { ToolHandlers } from './tools/index.js';
 import { AutoDiscovery } from './auto-discovery/auto-discovery.js';
 import { StartupManager } from './startup/startup-manager.js';
+import { AutoLoginManager, getAccountManager, maskEmail } from './accounts/index.js';
+import type { RotationStrategy } from './accounts/index.js';
+import { CONFIG } from './config.js';
 import { log } from './utils/logger.js';
 
 // Extend Express Request to include requestId
@@ -29,6 +34,8 @@ declare global {
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));
+
+const ROTATION_STRATEGIES: RotationStrategy[] = ['least_used', 'round_robin', 'failover', 'random'];
 
 // Request ID middleware for debugging and log correlation
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -67,6 +74,9 @@ app.get('/', (_req: Request, res: Response) => {
       setup_auth: 'POST /setup-auth',
       notebooks: 'GET /notebooks',
       sessions: 'GET /sessions',
+      accounts: 'GET /accounts',
+      accounts_health: 'GET /accounts/health',
+      file_download: 'GET /files/download?path=...',
     },
     docs: 'https://github.com/carterlasalle/notebooklm-mcp',
   });
@@ -77,6 +87,182 @@ app.get('/health', async (_req: Request, res: Response) => {
   try {
     const result = await toolHandlers.handleGetHealth();
     res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Account pool overview (sanitized; never returns credentials or cookies)
+app.get('/accounts', async (_req: Request, res: Response) => {
+  try {
+    const accountManager = await getAccountManager();
+    res.json({
+      success: true,
+      data: accountManager.getPoolOverview(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Account pool health (sanitized)
+app.get('/accounts/health', async (_req: Request, res: Response) => {
+  try {
+    const accountManager = await getAccountManager();
+    const health = await accountManager.healthCheck();
+    res.json({
+      success: true,
+      data: health.map((entry) => ({
+        ...entry,
+        email: maskEmail(entry.email),
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Update rotation strategy
+app.put('/accounts/strategy', async (req: Request, res: Response) => {
+  try {
+    const { strategy } = req.body;
+    if (!ROTATION_STRATEGIES.includes(strategy)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid strategy. Supported strategies: ${ROTATION_STRATEGIES.join(', ')}`,
+      });
+    }
+
+    const accountManager = await getAccountManager();
+    await accountManager.setRotationStrategy(strategy);
+    res.json({
+      success: true,
+      data: accountManager.getPoolOverview(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Enable account without deleting stored state/profile
+app.post('/accounts/:id/enable', async (req: Request, res: Response) => {
+  try {
+    const accountManager = await getAccountManager();
+    const updated = await accountManager.setAccountEnabled(req.params.id, true);
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        error: 'Account not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: accountManager.getPoolOverview(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Disable account without deleting stored state/profile
+app.post('/accounts/:id/disable', async (req: Request, res: Response) => {
+  try {
+    const accountManager = await getAccountManager();
+    const updated = await accountManager.setAccountEnabled(req.params.id, false);
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        error: 'Account not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: accountManager.getPoolOverview(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Update failover priority; lower priority value wins
+app.put('/accounts/:id/priority', async (req: Request, res: Response) => {
+  try {
+    const priority = Number(req.body?.priority);
+    if (!Number.isFinite(priority) || priority < 1) {
+      return res.status(400).json({
+        success: false,
+        error: 'priority must be a positive number',
+      });
+    }
+
+    const accountManager = await getAccountManager();
+    const updated = await accountManager.setAccountPriority(req.params.id, priority);
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        error: 'Account not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: accountManager.getPoolOverview(),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Test/login a single account using stored encrypted credentials
+app.post('/accounts/:id/test', async (req: Request, res: Response) => {
+  try {
+    const { show_browser, timeout_ms } = req.body ?? {};
+    const accountManager = await getAccountManager();
+    const account = accountManager.getAccount(req.params.id);
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        error: 'Account not found',
+      });
+    }
+
+    const autoLogin = new AutoLoginManager(accountManager);
+    const result = await autoLogin.performAutoLogin(req.params.id, {
+      showBrowser: show_browser === true,
+      timeout: Number.isFinite(Number(timeout_ms)) ? Number(timeout_ms) : undefined,
+    });
+
+    res.json({
+      success: result.success,
+      data: {
+        ...result,
+        email: maskEmail(account.config.email),
+      },
+      error: result.error,
+    });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -936,6 +1122,55 @@ app.get('/content/download', async (req: Request, res: Response) => {
   }
 });
 
+// Download a generated local file from the Railway data directory.
+// This exists for Cloudflare workers that need to upload generated media to R2.
+app.get('/files/download', async (req: Request, res: Response) => {
+  try {
+    const filePath = req.query.path;
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required query parameter: path',
+      });
+    }
+
+    if (/^https?:\/\//i.test(filePath)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Remote URLs should be fetched directly by the caller',
+      });
+    }
+
+    const dataDir = path.resolve(CONFIG.dataDir);
+    const resolvedPath = path.resolve(filePath);
+    if (resolvedPath !== dataDir && !resolvedPath.startsWith(`${dataDir}${path.sep}`)) {
+      return res.status(403).json({
+        success: false,
+        error: 'File path is outside the allowed data directory',
+      });
+    }
+
+    const stat = await fs.stat(resolvedPath);
+    if (!stat.isFile()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Path is not a file',
+      });
+    }
+
+    const file = await fs.readFile(resolvedPath);
+    res.setHeader('Content-Type', contentTypeForPath(resolvedPath));
+    res.setHeader('Content-Length', String(file.length));
+    res.setHeader('Content-Disposition', `attachment; filename="${path.basename(resolvedPath)}"`);
+    res.send(file);
+  } catch (error) {
+    res.status(404).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 // Create a note in the notebook
 app.post('/content/notes', async (req: Request, res: Response) => {
   try {
@@ -1031,7 +1266,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
 });
 
 // Start server with startup sequence
-const PORT = Number(process.env.HTTP_PORT) || 3000;
+const PORT = Number(process.env.PORT) || Number(process.env.HTTP_PORT) || 3000;
 const HOST = process.env.HTTP_HOST || '0.0.0.0';
 const VERSION = '1.5.3';
 
@@ -1211,6 +1446,15 @@ async function startServer(port: number, host: string): Promise<void> {
   log.info('   POST   /ask                    Ask a question to NotebookLM');
   log.info('   GET    /health                 Server health check');
   log.info('');
+  log.info('   Account Pool:');
+  log.info('   GET    /accounts               Account pool overview');
+  log.info('   GET    /accounts/health        Account health and quota status');
+  log.info('   PUT    /accounts/strategy      Set rotation strategy');
+  log.info('   POST   /accounts/:id/enable    Enable an account');
+  log.info('   POST   /accounts/:id/disable   Disable an account');
+  log.info('   PUT    /accounts/:id/priority  Set failover priority');
+  log.info('   POST   /accounts/:id/test      Test/login stored account');
+  log.info('');
   log.info('   Notebooks:');
   log.info('   GET    /notebooks              List all notebooks');
   log.info('   POST   /notebooks              Add a new notebook');
@@ -1234,6 +1478,7 @@ async function startServer(port: number, host: string): Promise<void> {
   log.info('   DELETE /content/sources        Delete source by name (query param)');
   log.info('   POST   /content/generate       Generate content (audio, video, etc.)');
   log.info('   GET    /content/download       Download/export generated content');
+  log.info('   GET    /files/download         Download a generated local file');
   log.info('   POST   /content/notes          Create a note in the notebook');
   log.info('   POST   /content/chat-to-note   Save chat/discussion to a note');
   log.info('   POST   /content/notes/:title/to-source  Convert note to source');
@@ -1279,3 +1524,20 @@ process.on('SIGINT', async () => {
   }
   process.exit(0);
 });
+
+function contentTypeForPath(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  const contentTypes: Record<string, string> = {
+    '.wav': 'audio/wav',
+    '.mp3': 'audio/mpeg',
+    '.mp4': 'video/mp4',
+    '.pdf': 'application/pdf',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.json': 'application/json',
+    '.txt': 'text/plain; charset=utf-8',
+  };
+
+  return contentTypes[ext] || 'application/octet-stream';
+}
