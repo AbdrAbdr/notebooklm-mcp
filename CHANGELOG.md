@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.4] - 2026-06-20
+
+### Added — German UI selectors (closes #14 deferred item)
+
+The selector pipeline used to iterate only `fr` + `en`, so NotebookLM
+accounts running in German (any selector-based action — `add_source`,
+`generate_content`, the Studio tab, the source-type chips) would silently
+fall through and report "Could not find …" errors.
+
+- New `src/i18n/de.json` with the full string set (tabs, buttons, source
+  types, content types, status, errors, placeholders, content options).
+- `'de'` registered as a `SupportedLocale` so `SelectorBuilder`, `tAll()`
+  and every dialog/chip lookup now emit German variants alongside FR/EN.
+- New `src/__tests__/i18n.test.ts` asserts every locale ships the same
+  leaf-key shape as the EN reference — catches the "new locale missing a
+  translation key" regression class.
+
+The German strings are best-effort and not runtime-validated against a
+live German NotebookLM account — open an issue / PR if any string is off
+and we'll fix it in a patch.
+
+---
+
 ## [2.0.3] - 2026-06-20
 
 ### Security — `vault.batch` path-traversal hardening (issue #15)

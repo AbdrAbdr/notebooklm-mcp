@@ -1,0 +1,120 @@
+{
+  "$schema": "./locale-schema.json",
+  "locale": "de",
+  "name": "Deutsch",
+  "description": "German UI selectors for NotebookLM (community contribution — open an issue if a string is wrong)",
+
+  "tabs": {
+    "sources": "Quellen",
+    "discussion": "Diskussion",
+    "studio": "Studio"
+  },
+
+  "buttons": {
+    "addSource": "Quelle hinzufügen",
+    "addNote": "Notiz hinzufügen",
+    "newNote": "Neue Notiz",
+    "insert": "Einfügen",
+    "add": "Hinzufügen",
+    "upload": "Hochladen",
+    "delete": "Löschen",
+    "remove": "Entfernen",
+    "confirm": "Bestätigen",
+    "yes": "Ja",
+    "cancel": "Abbrechen",
+    "close": "Schließen",
+    "save": "Speichern",
+    "done": "Fertig",
+    "create": "Erstellen",
+    "download": "Herunterladen",
+    "generate": "Generieren"
+  },
+
+  "sourceTypes": {
+    "uploadFiles": "Dateien hochladen",
+    "website": "Website",
+    "link": "Link",
+    "url": "URL",
+    "pastedText": "Kopierter Text",
+    "drive": "Drive",
+    "youtube": "YouTube"
+  },
+
+  "placeholders": {
+    "pasteUrl": "Einfügen",
+    "enterUrl": "URL eingeben",
+    "pasteLinks": "Links"
+  },
+
+  "sourceNames": {
+    "pastedText": "Eingefügter Text"
+  },
+
+  "contentTypes": {
+    "audio": "Audio",
+    "video": "Video",
+    "presentation": "Präsentation",
+    "slides": "Folien",
+    "infographic": "Infografik",
+    "report": "Bericht",
+    "briefing": "Briefing-Dokument",
+    "dataTable": "Datentabelle",
+    "table": "Tabelle"
+  },
+
+  "contentOptions": {
+    "videoStyles": {
+      "classroom": "Unterricht",
+      "documentary": "Dokumentation",
+      "animated": "Animiert",
+      "corporate": "Unternehmen",
+      "cinematic": "Filmisch",
+      "minimalist": "Minimalistisch"
+    },
+    "videoFormats": {
+      "brief": "Kurz",
+      "explainer": "Erklärung"
+    },
+    "presentationStyles": {
+      "detailedSlideshow": "Detaillierte Präsentation",
+      "presenterNotes": "Vortragsnotizen"
+    },
+    "presentationLengths": {
+      "short": "Kurz",
+      "default": "Standard"
+    },
+    "infographicFormats": {
+      "horizontal": "Horizontal",
+      "vertical": "Vertikal"
+    },
+    "reportFormats": {
+      "summary": "Zusammenfassung",
+      "detailed": "Detailliert"
+    }
+  },
+
+  "dialogs": {
+    "selectLanguage": "Sprache auswählen",
+    "language": "Sprache"
+  },
+
+  "actions": {
+    "openInSheets": "In Sheets öffnen",
+    "openInSlides": "In Präsentationen öffnen",
+    "deepDive": "Detailanalyse",
+    "audioOverview": "Audio-Übersicht",
+    "addToSources": "Zu Quellen hinzufügen",
+    "convertToSource": "In Quelle umwandeln"
+  },
+
+  "status": {
+    "generating": "Wird generiert...",
+    "processing": "Wird verarbeitet...",
+    "ready": "Fertig"
+  },
+
+  "errors": {
+    "error": "Fehler",
+    "rateLimitReached": "Sie haben das tägliche Limit erreicht"
+  }
+}

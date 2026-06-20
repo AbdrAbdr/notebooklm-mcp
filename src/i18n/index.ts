@@ -103,7 +103,7 @@ export interface LocaleData {
 }
 
 // Supported locales
-export type SupportedLocale = 'fr' | 'en';
+export type SupportedLocale = 'fr' | 'en' | 'de';
 
 // Default locale
 const DEFAULT_LOCALE: SupportedLocale = 'fr';
@@ -201,7 +201,7 @@ export function getLocaleData(): LocaleData {
  * Get all supported locales
  */
 export function getSupportedLocales(): SupportedLocale[] {
-  return ['fr', 'en'];
+  return ['fr', 'en', 'de'];
 }
 
 /**
