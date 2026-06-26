@@ -25,10 +25,9 @@ Two new Studio-panel tools, contributed by [@he0xwhale](https://github.com/he0xw
   back empty.
 
 Both tools are exposed over HTTP at `POST /content/notes/list` and
-`POST /content/notes/get`. Selectors use the durable `artifact-library-note`
-
-- `artifact-title` pattern, consistent with the id-pattern convention used
-  elsewhere in the scraper.
+`POST /content/notes/get`. Selectors use the durable
+`artifact-library-note` + `artifact-title` pattern, consistent with the
+id-pattern convention used elsewhere in the scraper.
 
 Minor release: additive only, no behavioural change to any existing tool.
 
