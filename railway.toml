@@ -1,0 +1,9 @@
+[build]
+builder = "DOCKERFILE"
+
+[deploy]
+startCommand = "/app/scripts/docker-entrypoint.sh"
+
+[env]
+NODE_ENV = "production"
+ENABLE_VNC = "true"

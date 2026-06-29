@@ -36,6 +36,72 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 
 const ROTATION_STRATEGIES: RotationStrategy[] = ['least_used', 'round_robin', 'failover', 'random'];
+type ManualAuthJobStatus = 'running' | 'success' | 'failed';
+
+type ManualAuthJob = {
+  id: string;
+  accountId: string;
+  email: string;
+  status: ManualAuthJobStatus;
+  startedAt: string;
+  updatedAt: string;
+  durationMs?: number;
+  error?: string;
+  progress?: {
+    message: string;
+    current: number;
+    total: number;
+  };
+  result?: {
+    accountPool?: unknown;
+  };
+};
+
+type ManualAuthResult = {
+  statusCode: number;
+  payload: {
+    success: boolean;
+    data?: Record<string, unknown>;
+    error?: string;
+  };
+};
+
+const manualAuthJobs = new Map<string, ManualAuthJob>();
+const manualAuthJobByAccount = new Map<string, string>();
+
+function serializeManualAuthJob(job: ManualAuthJob): ManualAuthJob {
+  return {
+    ...job,
+    progress: job.progress ? { ...job.progress } : undefined,
+    result: job.result ? { ...job.result } : undefined,
+  };
+}
+
+async function hasValidGoogleAuthState(stateFilePath: string): Promise<boolean> {
+  try {
+    const stateData = await fs.readFile(stateFilePath, 'utf-8');
+    const state = JSON.parse(stateData);
+    if (!Array.isArray(state.cookies) || state.cookies.length === 0) {
+      return false;
+    }
+
+    const criticalCookieNames = ['SID', 'HSID', 'SSID', 'APISID', 'SAPISID'];
+    const criticalCookies = state.cookies.filter((cookie: { name?: string }) =>
+      criticalCookieNames.includes(cookie.name || '')
+    );
+    if (criticalCookies.length === 0) {
+      return false;
+    }
+
+    const currentTime = Date.now() / 1000;
+    return !criticalCookies.some((cookie: { expires?: number }) => {
+      const expires = cookie.expires ?? -1;
+      return expires !== -1 && expires < currentTime;
+    });
+  } catch {
+    return false;
+  }
+}
 
 // Request ID middleware for debugging and log correlation
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -76,6 +142,8 @@ app.get('/', (_req: Request, res: Response) => {
       sessions: 'GET /sessions',
       accounts: 'GET /accounts',
       accounts_health: 'GET /accounts/health',
+      account_manual_auth_start: 'POST /accounts/:id/manual-auth/start',
+      account_manual_auth_status: 'GET /accounts/:id/manual-auth/status',
       file_download: 'GET /files/download?path=...',
     },
     docs: 'https://github.com/carterlasalle/notebooklm-mcp',
@@ -85,8 +153,42 @@ app.get('/', (_req: Request, res: Response) => {
 // Health check
 app.get('/health', async (_req: Request, res: Response) => {
   try {
-    const result = await toolHandlers.handleGetHealth();
-    res.json(result);
+    const stats = sessionManager.getStats();
+    let authenticated = false;
+    let currentAccount: string | undefined;
+
+    try {
+      const accountManager = await getAccountManager();
+      const currentAccountId = await accountManager.getCurrentAccountId();
+      if (currentAccountId) {
+        const account = accountManager.getAccount(currentAccountId);
+        if (account) {
+          currentAccount = maskEmail(account.config.email);
+          authenticated = await hasValidGoogleAuthState(account.stateFilePath);
+        }
+      }
+    } catch (error) {
+      log.warning(
+        `Health account check skipped: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    res.json({
+      success: true,
+      data: {
+        status: 'ok',
+        authenticated,
+        notebook_url: CONFIG.notebookUrl || 'not configured',
+        active_sessions: stats.active_sessions,
+        max_sessions: stats.max_sessions,
+        session_timeout: stats.session_timeout,
+        total_messages: stats.total_messages,
+        headless: CONFIG.headless,
+        auto_login_enabled: CONFIG.autoLoginEnabled,
+        stealth_enabled: CONFIG.stealthEnabled,
+        ...(currentAccount ? { current_account: currentAccount } : {}),
+      },
+    });
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -122,6 +224,72 @@ app.get('/accounts/health', async (_req: Request, res: Response) => {
         ...entry,
         email: maskEmail(entry.email),
       })),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Add account slot. Password is optional: if omitted, the account can be
+// authenticated manually through /accounts/:id/manual-auth.
+app.post('/accounts', async (req: Request, res: Response) => {
+  try {
+    const { email, password, totp_secret, totpSecret, priority, notes } = req.body ?? {};
+    const normalizedEmail = typeof email === 'string' ? email.trim() : '';
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
+      return res.status(400).json({
+        success: false,
+        error: 'email is required',
+      });
+    }
+
+    const accountManager = await getAccountManager();
+    const safePriority = Number.isFinite(Number(priority)) ? Number(priority) : undefined;
+    const safeNotes = typeof notes === 'string' ? notes : undefined;
+    const accountId =
+      typeof password === 'string' && password.length > 0
+        ? await accountManager.addAccount(normalizedEmail, password, totp_secret || totpSecret, {
+            priority: safePriority,
+            notes: safeNotes,
+          })
+        : await accountManager.addManualAccount(normalizedEmail, {
+            priority: safePriority,
+            notes: safeNotes,
+          });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        accountId,
+        accountPool: accountManager.getPoolOverview(),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Remove account slot and its stored profile/state.
+app.delete('/accounts/:id', async (req: Request, res: Response) => {
+  try {
+    const accountManager = await getAccountManager();
+    const removed = await accountManager.removeAccount(req.params.id);
+    if (!removed) {
+      return res.status(404).json({
+        success: false,
+        error: 'Account not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: accountManager.getPoolOverview(),
     });
   } catch (error) {
     res.status(500).json({
@@ -270,6 +438,215 @@ app.post('/accounts/:id/test', async (req: Request, res: Response) => {
     });
   }
 });
+
+async function performManualAccountAuth(
+  accountId: string,
+  options: { showBrowser?: boolean; clearExisting?: boolean },
+  onProgress?: (message: string, progress?: number, total?: number) => void
+): Promise<ManualAuthResult> {
+  try {
+    const showBrowser = options.showBrowser !== false;
+    const clearExisting = options.clearExisting !== false;
+    const accountManager = await getAccountManager();
+    const account = accountManager.getAccount(accountId);
+    if (!account) {
+      return { statusCode: 404, payload: { success: false, error: 'Account not found' } };
+    }
+
+    if (clearExisting) {
+      await sessionManager.closeAllSessions();
+      await authManager.clearAllAuthData();
+    }
+
+    const startedAt = Date.now();
+    const authenticated = await authManager.performSetup(
+      async (message, progress, total) => {
+        log.info(`[manual-auth:${accountId}] ${message} (${progress}/${total})`);
+        onProgress?.(message, progress, total);
+      },
+      showBrowser,
+      true
+    );
+    const durationMs = Date.now() - startedAt;
+
+    if (!authenticated) {
+      await accountManager.recordLoginFailure(accountId, 'Manual Google auth failed');
+      return {
+        statusCode: 400,
+        payload: {
+          success: false,
+          error: 'Manual Google auth failed',
+          data: {
+            accountId,
+            email: maskEmail(account.config.email),
+            durationMs,
+          },
+        },
+      };
+    }
+
+    const synced = await accountManager.syncMainToAccount(accountId);
+    if (!synced) {
+      await accountManager.recordLoginFailure(
+        accountId,
+        'Manual Google auth succeeded but profile sync failed'
+      );
+      return {
+        statusCode: 500,
+        payload: {
+          success: false,
+          error: 'Manual Google auth succeeded but profile sync failed',
+        },
+      };
+    }
+
+    await accountManager.saveCurrentAccountId(accountId);
+    await accountManager.recordLoginSuccess(accountId);
+
+    return {
+      statusCode: 200,
+      payload: {
+        success: true,
+        data: {
+          accountId,
+          email: maskEmail(account.config.email),
+          durationMs,
+          accountPool: accountManager.getPoolOverview(),
+        },
+      },
+    };
+  } catch (error) {
+    return {
+      statusCode: 500,
+      payload: {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
+}
+
+async function handleManualAccountAuth(req: Request, res: Response) {
+  const { show_browser, clear_existing } = req.body ?? {};
+  const result = await performManualAccountAuth(req.params.id, {
+    showBrowser: show_browser !== false,
+    clearExisting: clear_existing !== false,
+  });
+  res.status(result.statusCode).json(result.payload);
+}
+
+app.post('/accounts/:id/manual-auth/start', async (req: Request, res: Response) => {
+  try {
+    const { show_browser, clear_existing } = req.body ?? {};
+    const accountManager = await getAccountManager();
+    const account = accountManager.getAccount(req.params.id);
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        error: 'Account not found',
+      });
+    }
+
+    const existingJobId = manualAuthJobByAccount.get(req.params.id);
+    const existingJob = existingJobId ? manualAuthJobs.get(existingJobId) : undefined;
+    if (existingJob?.status === 'running') {
+      return res.status(202).json({
+        success: true,
+        data: {
+          job: serializeManualAuthJob(existingJob),
+        },
+      });
+    }
+
+    const now = new Date().toISOString();
+    const job: ManualAuthJob = {
+      id: `manual-auth-${Date.now()}-${randomUUID().slice(0, 8)}`,
+      accountId: req.params.id,
+      email: maskEmail(account.config.email),
+      status: 'running',
+      startedAt: now,
+      updatedAt: now,
+    };
+    manualAuthJobs.set(job.id, job);
+    manualAuthJobByAccount.set(req.params.id, job.id);
+
+    void (async () => {
+      const result = await performManualAccountAuth(
+        req.params.id,
+        {
+          showBrowser: show_browser !== false,
+          clearExisting: clear_existing !== false,
+        },
+        (message, progress, total) => {
+          job.progress = { message, current: progress ?? 0, total: total ?? 0 };
+          job.updatedAt = new Date().toISOString();
+        }
+      );
+
+      job.status = result.payload.success ? 'success' : 'failed';
+      job.updatedAt = new Date().toISOString();
+      if (typeof result.payload.error === 'string') {
+        job.error = result.payload.error;
+      }
+      const data = result.payload.data || {};
+      if (typeof data.durationMs === 'number') {
+        job.durationMs = data.durationMs;
+      }
+      if (data.accountPool) {
+        job.result = { accountPool: data.accountPool };
+      }
+    })().catch((error) => {
+      job.status = 'failed';
+      job.error = error instanceof Error ? error.message : String(error);
+      job.updatedAt = new Date().toISOString();
+    });
+
+    res.status(202).json({
+      success: true,
+      data: {
+        job: serializeManualAuthJob(job),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+app.get('/accounts/:id/manual-auth/status', async (req: Request, res: Response) => {
+  try {
+    const accountManager = await getAccountManager();
+    const account = accountManager.getAccount(req.params.id);
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        error: 'Account not found',
+      });
+    }
+
+    const jobId = manualAuthJobByAccount.get(req.params.id);
+    const job = jobId ? manualAuthJobs.get(jobId) : undefined;
+    res.json({
+      success: true,
+      data: {
+        job: job ? serializeManualAuthJob(job) : null,
+        accountPool: accountManager.getPoolOverview(),
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Manual browser login for a selected account slot. The saved global auth state
+// is copied into that account's private profile after Google login completes.
+app.post('/accounts/:id/manual-auth', handleManualAccountAuth);
+app.post('/accounts/:id/setup-auth', handleManualAccountAuth);
 
 // Ask question
 app.post('/ask', async (req: Request, res: Response) => {
@@ -1269,6 +1646,7 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
 const PORT = Number(process.env.PORT) || Number(process.env.HTTP_PORT) || 3000;
 const HOST = process.env.HTTP_HOST || '0.0.0.0';
 const VERSION = '1.5.3';
+const RUN_STARTUP_SEQUENCE = process.env.RUN_STARTUP_SEQUENCE === 'true';
 
 const startupManager = new StartupManager(authManager);
 
@@ -1426,8 +1804,22 @@ async function startServer(port: number, host: string): Promise<void> {
   log.success(`🌐 NotebookLM MCP HTTP Server v${VERSION}`);
   log.success(`   Listening on ${HOST}:${PORT}`);
 
-  // Run startup sequence (account connection, auth verification)
-  const startupResult = await startupManager.startup();
+  // Production HTTP mode must become ready immediately. Manual Google auth is
+  // triggered per account from the admin panel, so startup browser verification
+  // is opt-in for local/debug runs only.
+  const startupResult = RUN_STARTUP_SEQUENCE
+    ? await startupManager.startup()
+    : {
+        success: true,
+        serverStarted: true,
+        authenticated: false,
+        message: 'Startup auth verification skipped',
+        details: [] as string[],
+      };
+
+  if (!RUN_STARTUP_SEQUENCE) {
+    log.info('🚦 Startup auth verification skipped (set RUN_STARTUP_SEQUENCE=true to enable)');
+  }
 
   // Show quick links and endpoints after startup
   log.info('');

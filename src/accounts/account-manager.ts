@@ -315,6 +315,51 @@ export class AccountManager {
   }
 
   /**
+   * Add an account slot for manual Google authentication.
+   *
+   * This intentionally stores no password. The account becomes usable after
+   * /accounts/:id/manual-auth syncs the browser state into this account profile.
+   */
+  async addManualAccount(
+    email: string,
+    options: { priority?: number; notes?: string } = {}
+  ): Promise<string> {
+    if (!this.config) {
+      throw new Error('Account manager not initialized');
+    }
+
+    if (this.config.accounts.length >= MAX_ACCOUNTS) {
+      throw new Error(`NotebookLM account pool supports up to ${MAX_ACCOUNTS} accounts`);
+    }
+
+    const id = `account-${Date.now()}`;
+    const accountConfig: AccountConfig = {
+      id,
+      email,
+      enabled: true,
+      priority: options.priority ?? this.config.accounts.length + 1,
+      hasCredentials: false,
+      hasTotp: false,
+      createdAt: new Date().toISOString(),
+      notes: options.notes,
+    };
+
+    const accountDir = path.join(this.accountsDir, id);
+    await fs.mkdir(accountDir, { recursive: true });
+    await fs.mkdir(path.join(accountDir, 'browser_state'), { recursive: true });
+    await fs.mkdir(path.join(accountDir, 'profile'), { recursive: true });
+
+    this.config.accounts.push(accountConfig);
+    await this.saveConfig();
+
+    const account = await this.loadAccount(accountConfig);
+    this.accounts.set(id, account);
+
+    log.success(`✅ Manual auth account slot added: ${maskEmail(email)} (${id})`);
+    return id;
+  }
+
+  /**
    * Remove an account
    */
   async removeAccount(accountId: string): Promise<boolean> {

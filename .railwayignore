@@ -1,0 +1,79 @@
+# Railway ignore file - overrides .gitignore for uploads
+# IMPORTANT: dist/ must NOT be ignored here (the Docker build needs it)
+
+# Dependencies (will be installed in container)
+node_modules/
+
+# Source files - KEPT for multi-stage Docker build
+# src/, tsconfig.json, and *.ts are needed by the builder stage
+
+# Tests
+tests/
+*.test.ts
+*.test.js
+jest.config.*
+coverage/
+
+# Development files
+.env
+.env.*
+.env.local
+*.log
+npm-debug.log*
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts not needed
+*.tsbuildinfo
+
+# Documentation
+docs/
+deployment/
+*.md
+
+# Local data (sensitive)
+Data/
+data/
+browser_state/
+chrome_profile/
+.notebooklm-mcp/
+library.json
+*.enc.json
+
+# Git
+.git/
+.gitignore
+
+# Claude/development specific
+.claude/
+CLAUDE.md
+scripts/*.ps1
+*.output
+
+# Husky hooks
+.husky/
+
+# Publishing
+publish/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Debug / temp
+debug-*.png
+screenshots/
+*.tar.gz
+temp-*.ts
+temp-*.js
