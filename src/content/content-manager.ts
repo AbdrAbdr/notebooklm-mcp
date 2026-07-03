@@ -619,12 +619,21 @@ export class ContentManager {
       const textTypeSelectors = [
         // Span element with pasted text label
         ...i18nSelectors('span:has-text("{text}")', 'sourceTypes', 'pastedText'),
+        ...i18nSelectors(
+          '[role="dialog"] [role="button"]:has-text("{text}")',
+          'sourceTypes',
+          'pastedText'
+        ),
+        ...i18nSelectors('[role="dialog"] button:has-text("{text}")', 'sourceTypes', 'pastedText'),
         ...i18nSelectors(':has-text("{text}")', 'sourceTypes', 'pastedText'),
         // Parent of the span (clickable area)
         ...i18nSelectors('*:has(> span:has-text("{text}"))', 'sourceTypes', 'pastedText'),
         // Generic fallbacks
         'span:has-text("Paste text")',
         ':has-text("Paste text")',
+        '[role="dialog"] [role="button"]:has-text("Скопированный текст")',
+        '[role="dialog"] button:has-text("Скопированный текст")',
+        'span:has-text("Скопированный текст")',
         '[data-type="text"]',
       ];
 
@@ -639,7 +648,7 @@ export class ContentManager {
         log.info(`  🔍 DEBUG: Found ${dialogButtons.length} clickable elements in dialog`);
         for (let i = 0; i < Math.min(dialogButtons.length, 15); i++) {
           const btn = dialogButtons[i];
-          const text = await btn.textContent();
+          const text = await btn.textContent({ timeout: 1000 });
           log.info(`    Element[${i}]: "${text?.trim()}"`);
         }
       } catch (e) {
@@ -1149,15 +1158,17 @@ export class ContentManager {
         // METHOD 1: Look for pasted text source in the SOURCES PANEL specifically (not anywhere on page)
         // Use more specific selectors to avoid matching dialog content
         // Support both French ("Texte collé") and English ("Pasted text") UI via i18n
+        const pastedTextNames = [
+          ...tAll('sourceNames', 'pastedText'),
+          'Скопированный текст',
+          'Вставленный текст',
+        ].filter((value, index, all) => value && all.indexOf(value) === index);
         const pastedTextSelectors = [
           // Sources panel specific selectors (bilingual via i18n)
-          ...i18nSelectors('mat-checkbox:has-text("{text}")', 'sourceNames', 'pastedText'),
-          ...i18nSelectors('[class*="source"]:has-text("{text}")', 'sourceNames', 'pastedText'),
-          ...i18nSelectors(':has-text("{text}"):not([role="dialog"])', 'sourceNames', 'pastedText'),
+          ...pastedTextNames.map((name) => `mat-checkbox:has-text("${name}")`),
+          ...pastedTextNames.map((name) => `[class*="source"]:has-text("${name}")`),
+          ...pastedTextNames.map((name) => `:has-text("${name}"):not([role="dialog"])`),
         ];
-
-        // Get localized pasted text names for detection
-        const pastedTextNames = tAll('sourceNames', 'pastedText');
 
         for (const selector of pastedTextSelectors) {
           try {
