@@ -19,6 +19,7 @@ import type { Page } from 'patchright';
 import { randomDelay, realisticClick, humanType } from '../utils/stealth-utils.js';
 import { waitForLatestAnswer, snapshotAllResponses, isErrorMessage } from '../utils/page-utils.js';
 import { log } from '../utils/logger.js';
+import { selectors, tAll } from '../i18n/index.js';
 import type { ContentType, ContentGenerationInput, ContentGenerationResult } from './types.js';
 import {
   type ContentTypeConfig,
@@ -102,7 +103,10 @@ export class ContentGenerator {
       }
 
       // Step 3: Try to find and click the generation button
-      const buttonResult = await this.findButton(config.buttonSelectors);
+      const localizedButtons = tAll('contentTypes', contentTypeToI18nKey(input.type)).flatMap(
+        (text) => [`button:has-text("${text}")`, `[role="button"]:has-text("${text}")`]
+      );
+      const buttonResult = await this.findButton([...config.buttonSelectors, ...localizedButtons]);
 
       if (buttonResult.found && buttonResult.selector) {
         log.info(`  Found ${config.displayName} button: ${buttonResult.selector}`);
@@ -179,6 +183,7 @@ export class ContentGenerator {
     // Updated selectors based on current NotebookLM UI (Dec 2024)
     // The tabs are: Sources | Discussion | Studio
     const studioSelectors = [
+      ...selectors().tabWithText('studio').build(),
       'div.mdc-tab:has-text("Studio")', // Material Design tab with text
       '.mat-mdc-tab:has-text("Studio")', // Angular Material tab
       '[role="tab"]:has-text("Studio")', // Tab role with Studio text
@@ -231,6 +236,7 @@ export class ContentGenerator {
    */
   private async navigateToDiscussion(): Promise<void> {
     const discussionSelectors = [
+      ...selectors().tabWithText('discussion').build(),
       'div.mdc-tab:has-text("Discussion")',
       '.mat-mdc-tab:has-text("Discussion")',
       '[role="tab"]:has-text("Discussion")',
@@ -614,7 +620,18 @@ export class ContentGenerator {
     const chatInputSelectors = [
       'textarea.query-box-input', // PRIMARY - same as Python implementation
       'textarea[aria-label*="query"]',
+      'textarea[aria-label*="ask" i]',
       'textarea[aria-label*="Zone de requete"]',
+      'textarea[aria-label*="Zone de requête"]',
+      'textarea[aria-label*="запрос" i]',
+      'textarea[aria-label*="вопрос" i]',
+      'textarea[placeholder*="ask" i]',
+      'textarea[placeholder*="query" i]',
+      'textarea[placeholder*="запрос" i]',
+      'textarea[placeholder*="вопрос" i]',
+      'textarea[placeholder*="спрос" i]',
+      '[role="textbox"][contenteditable="true"]',
+      '[role="textbox"] textarea',
     ];
 
     let inputSelector: string | null = null;
@@ -766,6 +783,19 @@ export class ContentGenerator {
  */
 export function createContentGenerator(page: Page): ContentGenerator {
   return new ContentGenerator(page);
+}
+
+function contentTypeToI18nKey(type: ContentType): string {
+  switch (type) {
+    case 'audio_overview':
+      return 'audio';
+    case 'presentation':
+      return 'presentation';
+    case 'data_table':
+      return 'dataTable';
+    default:
+      return type;
+  }
 }
 
 // Note: CONTENT_CONFIGS, getContentConfig, buildChatPrompt, getFormatFromInput
