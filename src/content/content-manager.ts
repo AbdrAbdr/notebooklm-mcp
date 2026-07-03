@@ -2736,11 +2736,20 @@ export class ContentManager {
       },
       video: {
         tabSelectors: [
+          ...i18nSelectors('[role="tab"]:has-text("{text}")', 'contentTypes', 'video'),
+          ...i18nSelectors('button:has-text("{text}")', 'contentTypes', 'video'),
+          ...i18nSelectors('[aria-label*="{text}"]', 'contentTypes', 'video'),
           '[role="tab"]:has-text("Video")',
           'button:has-text("Video")',
           '[aria-label*="Video"]',
         ],
-        cardSelectors: ['.video-card', '[data-type="video"]', 'video'],
+        cardSelectors: [
+          '.video-card',
+          '[data-type="video"]',
+          'video',
+          ...i18nSelectors('button:has-text("{text}")', 'contentTypes', 'video'),
+          ...i18nSelectors('[aria-label*="{text}"]', 'contentTypes', 'video'),
+        ],
       },
       infographic: {
         tabSelectors: [
@@ -2838,9 +2847,17 @@ export class ContentManager {
       'button:has(mat-icon:has-text("get_app"))',
       'button[aria-label*="Download"]',
       'button[aria-label*="Télécharger"]',
+      'button[aria-label*="Скачать"]',
       'button[aria-label*="download"]',
+      ...i18nSelectors('button[aria-label*="{text}"]', 'buttons', 'download'),
+      ...i18nSelectors('[role="menuitem"][aria-label*="{text}"]', 'buttons', 'download'),
+      ...i18nSelectors('[role="menuitem"]:has-text("{text}")', 'buttons', 'download'),
+      ...i18nSelectors('mat-menu-item:has-text("{text}")', 'buttons', 'download'),
       // Text-based patterns (bilingual via i18n)
       ...i18nSelectors('button:has-text("{text}")', 'buttons', 'download'),
+      '.mat-mdc-menu-item:has-text("Download")',
+      '.mat-mdc-menu-item:has-text("Télécharger")',
+      '.mat-mdc-menu-item:has-text("Скачать")',
       'a[download]',
       '.download-button',
       '[data-action="download"]',
@@ -2857,6 +2874,52 @@ export class ContentManager {
         continue;
       }
     }
+
+    const menuTriggerSelectors = [
+      'button:has(mat-icon:has-text("more_vert"))',
+      'button:has(mat-icon:has-text("more_horiz"))',
+      'button[aria-label*="More"]',
+      'button[aria-label*="Options"]',
+      'button[aria-label*="Menu"]',
+      'button[aria-label*="Plus"]',
+      'button[aria-label*="Ещё"]',
+      'button[aria-label*="Еще"]',
+      'button[aria-label*="Меню"]',
+      'button[aria-label*="Действ"]',
+      '.mat-mdc-menu-trigger',
+      '[aria-haspopup="menu"]',
+    ];
+
+    for (const menuSelector of menuTriggerSelectors) {
+      try {
+        const menuButtons = await this.page.locator(menuSelector).all();
+        for (const menuBtn of menuButtons.slice(0, 8)) {
+          if (!(await menuBtn.isVisible({ timeout: 300 }))) continue;
+
+          log.info(`  🔍 Opening content action menu: ${menuSelector}`);
+          await menuBtn.click();
+          await randomDelay(250, 500);
+
+          for (const selector of downloadSelectors) {
+            try {
+              const btn = this.page.locator(selector).first();
+              if (await btn.isVisible({ timeout: 500 })) {
+                log.info(`  ✅ Found download menu item: ${selector}`);
+                return btn;
+              }
+            } catch {
+              continue;
+            }
+          }
+
+          await this.page.keyboard.press('Escape').catch(() => undefined);
+          await randomDelay(100, 200);
+        }
+      } catch {
+        continue;
+      }
+    }
+
     return null;
   }
 
