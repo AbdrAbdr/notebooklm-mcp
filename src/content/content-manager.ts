@@ -2670,6 +2670,15 @@ export class ContentManager {
       // Navigate to the appropriate content panel
       const panelConfig = this.getContentPanelConfig(contentType);
       await this.navigateToContentPanel(panelConfig);
+      if (contentType === 'video') {
+        const videoReady = await this.waitForVideoDownloadReadiness();
+        if (!videoReady) {
+          return {
+            success: false,
+            error: 'video_not_ready: Video generation is still processing; retry later.',
+          };
+        }
+      }
 
       // Find and click download button
       const downloadBtn = await this.findDownloadButton();
@@ -2727,6 +2736,59 @@ export class ContentManager {
       const errorMsg = error instanceof Error ? error.message : String(error);
       return { success: false, error: `Download failed: ${errorMsg}` };
     }
+  }
+
+  /**
+   * NotebookLM video generation is async. Avoid treating an in-progress video as a
+   * selector failure; the worker will poll this endpoint again.
+   */
+  private async waitForVideoDownloadReadiness(timeoutMs = 15000): Promise<boolean> {
+    const startedAt = Date.now();
+    const directReadySelectors = [
+      'video',
+      'a[download]',
+      'button:has(mat-icon:has-text("download"))',
+      'button:has(mat-icon:has-text("file_download"))',
+      'button[aria-label*="Download"]',
+      'button[aria-label*="Скачать"]',
+      ...i18nSelectors('button[aria-label*="{text}"]', 'buttons', 'download'),
+      ...i18nSelectors('button:has-text("{text}")', 'buttons', 'download'),
+    ];
+
+    while (Date.now() - startedAt < timeoutMs) {
+      for (const selector of directReadySelectors) {
+        try {
+          const element = this.page.locator(selector).first();
+          if (await element.isVisible({ timeout: 500 })) {
+            log.info(`  ✅ Video appears ready for download: ${selector}`);
+            return true;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      const bodyText = await this.page
+        .locator('body')
+        .innerText({ timeout: 1000 })
+        .catch(() => '');
+      const normalized = bodyText.toLowerCase();
+      if (
+        normalized.includes('generating') ||
+        normalized.includes('creating') ||
+        normalized.includes('processing') ||
+        normalized.includes('созда') ||
+        normalized.includes('генер') ||
+        normalized.includes('обработ')
+      ) {
+        log.info('  ⏳ Video is still processing in NotebookLM');
+      }
+
+      await this.page.waitForTimeout(2500);
+    }
+
+    log.warning('  ⚠️ Video is not ready for download yet');
+    return false;
   }
 
   /**
