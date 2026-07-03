@@ -135,6 +135,14 @@ export class ContentGenerator {
 
         log.info(`  Started ${config.displayName} generation via Studio button`);
 
+        if (input.type === 'video') {
+          return {
+            success: true,
+            contentType: input.type,
+            status: 'generating',
+          };
+        }
+
         // Wait for generation to complete
         const waitResult = await this.waitForContentGeneration(input.type, config);
 
