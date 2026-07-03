@@ -11,7 +11,7 @@
 
 import type { Page, Locator } from 'patchright';
 import path from 'path';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { randomDelay, realisticClick, humanType } from '../utils/stealth-utils.js';
 import { log } from '../utils/logger.js';
 import { CONFIG } from '../config.js';
@@ -2681,7 +2681,23 @@ export class ContentManager {
             return { success: true, filePath: audioSrc, mimeType: 'audio/wav' };
           }
         }
-        throw new Error('Download button not found');
+
+        if (contentType === 'video') {
+          const videoSrc = await this.getVideoSourceUrl();
+          if (videoSrc) {
+            return { success: true, filePath: videoSrc, mimeType: 'video/mp4' };
+          }
+
+          const blobVideo = await this.saveVideoElementBlob(outputPath);
+          if (blobVideo) {
+            return blobVideo;
+          }
+        }
+
+        const visibleButtons = await this.describeVisibleButtons();
+        throw new Error(
+          `Download button not found${visibleButtons ? `. Visible buttons: ${visibleButtons}` : ''}`
+        );
       }
 
       // Set up download handling and click
@@ -2940,6 +2956,108 @@ export class ContentManager {
       /* ignore */
     }
     return null;
+  }
+
+  /**
+   * Get video source URL directly from a video element when NotebookLM hides download in UI.
+   */
+  private async getVideoSourceUrl(): Promise<string | null> {
+    try {
+      const videoEl = await this.page.$('video');
+      if (!videoEl) return null;
+
+      const src =
+        (await videoEl.evaluate((node: any) => node.currentSrc || node.getAttribute('src'))) || '';
+      if (src && /^https?:\/\//i.test(src)) {
+        log.info(`  ✅ Video source URL found: ${src.slice(0, 120)}`);
+        return src;
+      }
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  /**
+   * Save a blob-backed video element to a local file when Playwright cannot find a download button.
+   */
+  private async saveVideoElementBlob(outputPath?: string): Promise<ContentDownloadResult | null> {
+    try {
+      const videoPayload = await this.page.evaluate(async () => {
+        const pageDocument = (globalThis as any).document;
+        const video = pageDocument.querySelector('video') as any;
+        const src = video?.currentSrc || video?.src || '';
+        if (!src.startsWith('blob:')) return null;
+
+        const response = await fetch(src);
+        const blob = await response.blob();
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        const chunks: string[] = [];
+        const chunkSize = 0x8000;
+        for (let index = 0; index < bytes.length; index += chunkSize) {
+          chunks.push(String.fromCharCode(...bytes.subarray(index, index + chunkSize)));
+        }
+
+        return {
+          base64: btoa(chunks.join('')),
+          mimeType: blob.type || response.headers.get('content-type') || 'video/mp4',
+        };
+      });
+
+      if (!videoPayload?.base64) return null;
+
+      const savePath =
+        outputPath || path.join(CONFIG.dataDir, `notebooklm-video-${Date.now()}.mp4`);
+      mkdirSync(path.dirname(savePath), { recursive: true });
+      writeFileSync(savePath, Buffer.from(videoPayload.base64, 'base64'));
+
+      log.success(`  ✅ Video saved from blob element: ${savePath}`);
+      return {
+        success: true,
+        filePath: savePath,
+        mimeType: videoPayload.mimeType || 'video/mp4',
+      };
+    } catch (error) {
+      log.warning(
+        `  ⚠️ Could not save video element blob: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Compact button snapshot for debugging selector drift without screenshots.
+   */
+  private async describeVisibleButtons(limit = 16): Promise<string> {
+    try {
+      return await this.page.evaluate((maxButtons) => {
+        const pageDocument = (globalThis as any).document;
+        const pageWindow = (globalThis as any).window;
+        const buttons = Array.from(
+          pageDocument.querySelectorAll('button, [role="button"], [role="menuitem"]')
+        ) as any[];
+        return buttons
+          .filter((button) => {
+            const rect = button.getBoundingClientRect();
+            const style = pageWindow.getComputedStyle(button);
+            return (
+              rect.width > 0 &&
+              rect.height > 0 &&
+              style.visibility !== 'hidden' &&
+              style.display !== 'none'
+            );
+          })
+          .slice(0, maxButtons)
+          .map((button, index) => {
+            const text = (button.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+            const aria = (button.getAttribute('aria-label') || '').slice(0, 80);
+            return `${index}:${text || '-'}|${aria || '-'}`;
+          })
+          .join(' ; ');
+      }, limit);
+    } catch {
+      return '';
+    }
   }
 
   /**
