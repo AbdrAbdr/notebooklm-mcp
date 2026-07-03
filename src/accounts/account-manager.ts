@@ -27,7 +27,9 @@ import type {
   RotationStrategy,
 } from './types.js';
 
-const DEFAULT_DAILY_QUOTA = 50; // NotebookLM free tier
+const configuredDailyQuota = Number.parseInt(process.env.NOTEBOOKLM_DAILY_QUOTA_LIMIT || '', 10);
+const DEFAULT_DAILY_QUOTA =
+  Number.isFinite(configuredDailyQuota) && configuredDailyQuota > 0 ? configuredDailyQuota : 5000;
 const MAX_ACCOUNTS = 10;
 
 export interface AccountPoolEntry {
@@ -42,6 +44,8 @@ export interface AccountPoolEntry {
   quotaUsed: number | null;
   quotaLimit: number | null;
   quotaRemaining: number | null;
+  quotaReachedToday: boolean | null;
+  quotaPercentUsed: number | null;
   quotaResetAt: string | null;
   sessionStatus: AccountState['sessionStatus'];
   consecutiveFailures: number;
@@ -200,6 +204,16 @@ export class AccountManager {
     } else {
       quota = this.createFreshQuota();
       await fs.writeFile(quotaPath, JSON.stringify(quota, null, 2));
+    }
+
+    if (quota.limit < DEFAULT_DAILY_QUOTA) {
+      const previousLimit = quota.limit;
+      quota.limit = DEFAULT_DAILY_QUOTA;
+      quota.lastUpdated = new Date().toISOString();
+      await fs.writeFile(quotaPath, JSON.stringify(quota, null, 2));
+      log.info(
+        `  📊 Upgraded quota guardrail for ${maskEmail(config.email)}: ${previousLimit} → ${quota.limit}`
+      );
     }
 
     // Load or create state
@@ -467,6 +481,12 @@ export class AccountManager {
       const quotaLimit = loaded?.quota.limit ?? null;
       const quotaRemaining =
         quotaUsed !== null && quotaLimit !== null ? Math.max(0, quotaLimit - quotaUsed) : null;
+      const quotaReachedToday =
+        quotaUsed !== null && quotaLimit !== null ? quotaUsed >= quotaLimit : null;
+      const quotaPercentUsed =
+        quotaUsed !== null && quotaLimit !== null && quotaLimit > 0
+          ? Math.min(100, Math.round((quotaUsed / quotaLimit) * 100))
+          : null;
 
       return {
         id: config.id,
@@ -480,6 +500,8 @@ export class AccountManager {
         quotaUsed,
         quotaLimit,
         quotaRemaining,
+        quotaReachedToday,
+        quotaPercentUsed,
         quotaResetAt: loaded?.quota.resetAt ?? null,
         sessionStatus: loaded?.state.sessionStatus ?? 'unknown',
         consecutiveFailures: loaded?.state.consecutiveFailures ?? 0,
