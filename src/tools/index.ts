@@ -3336,26 +3336,55 @@ export class ToolHandlers {
         await sendProgress?.('Clicking create button...', 2, 5);
         log.info('  🖱️  Looking for Create notebook button...');
 
-        // Look for "Create" or "Créer" button
-        const createButtonSelectors = [
+        const createNotebookPattern =
+          /(create|new|créer|nouveau|создать|новый|nuevo|crear|neu|erstellen).{0,40}(notebook|bloc|блокнот|cuaderno|notizbuch)|\+.{0,40}(notebook|bloc|блокнот|cuaderno|notizbuch)/i;
+        const selectorCandidates = [
           'button:has-text("Create")',
           'button:has-text("Créer")',
+          'button:has-text("Create notebook")',
+          'button:has-text("Créer un notebook")',
           'button:has-text("New notebook")',
           'button:has-text("Nouveau")',
-          '[aria-label*="Create"]',
-          '[aria-label*="Créer"]',
+          '[aria-label*="Create" i]',
+          '[aria-label*="Créer" i]',
+          '[aria-label*="notebook" i]',
+          '[role="button"][aria-label*="Create" i]',
+          '[role="button"][aria-label*="Créer" i]',
+          '[role="button"]:has-text("Create")',
+          '[role="button"]:has-text("Créer")',
           '.create-notebook-button',
           'button.mdc-button:has-text("Create")',
+          'button.mat-mdc-button-base:has-text("Créer")',
+          'button.mat-mdc-button-base:has-text("Create")',
         ];
 
         let clicked = false;
-        for (const selector of createButtonSelectors) {
+        for (const selector of selectorCandidates) {
           try {
-            const btn = page.locator(selector).first();
-            if (await btn.isVisible({ timeout: 2000 })) {
-              await btn.click();
-              clicked = true;
-              log.success(`  ✅ Clicked: ${selector}`);
+            const candidates = await page.locator(selector).all();
+            for (const candidate of candidates) {
+              const label = [
+                await candidate.textContent().catch(() => ''),
+                await candidate.getAttribute('aria-label').catch(() => ''),
+                await candidate.getAttribute('title').catch(() => ''),
+              ]
+                .filter(Boolean)
+                .join(' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+              if (!label || !createNotebookPattern.test(label)) {
+                continue;
+              }
+
+              if (await candidate.isVisible({ timeout: 1500 })) {
+                await candidate.click();
+                clicked = true;
+                log.success(`  ✅ Clicked create notebook control: ${selector} (${label})`);
+                break;
+              }
+            }
+            if (clicked) {
               break;
             }
           } catch {
@@ -3364,21 +3393,48 @@ export class ToolHandlers {
         }
 
         if (!clicked) {
-          // Try finding any button with "+" icon or create text
-          const allButtons = await page.locator('button').all();
-          for (const btn of allButtons) {
-            const text = await btn.textContent();
-            if (text && (text.includes('Create') || text.includes('Créer') || text.includes('+'))) {
-              await btn.click();
+          const interactiveCandidates = await page
+            .locator('button, [role="button"], a, [tabindex], .mat-mdc-button-base, .mdc-button')
+            .all();
+          const inspectedLabels: string[] = [];
+
+          for (const candidate of interactiveCandidates) {
+            const label = [
+              await candidate.textContent().catch(() => ''),
+              await candidate.getAttribute('aria-label').catch(() => ''),
+              await candidate.getAttribute('title').catch(() => ''),
+              await candidate.getAttribute('data-testid').catch(() => ''),
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .replace(/\s+/g, ' ')
+              .trim();
+
+            if (label) {
+              inspectedLabels.push(label.slice(0, 120));
+            }
+
+            if (
+              label &&
+              createNotebookPattern.test(label) &&
+              (await candidate.isVisible({ timeout: 1000 }))
+            ) {
+              await candidate.click();
               clicked = true;
-              log.success(`  ✅ Clicked button with text: ${text}`);
+              log.success(`  ✅ Clicked create notebook control by inspected label: ${label}`);
               break;
             }
           }
-        }
 
-        if (!clicked) {
-          throw new Error('Could not find Create notebook button');
+          if (!clicked) {
+            const debugPath = `debug-create-notebook-${Date.now()}.png`;
+            await page.screenshot({ path: debugPath, fullPage: true }).catch(() => undefined);
+            throw new Error(
+              `Could not find Create notebook button at ${page.url()}. ` +
+                `Inspected controls: ${inspectedLabels.slice(0, 12).join(' | ') || 'none'}. ` +
+                `Screenshot: ${debugPath}`
+            );
+          }
         }
 
         await sendProgress?.('Waiting for notebook creation...', 3, 5);
@@ -3417,9 +3473,6 @@ export class ToolHandlers {
 
         await sendProgress?.('Done!', 5, 5);
 
-        // Restore headless config
-        CONFIG.headless = originalHeadless;
-
         return {
           success: true,
           data: {
@@ -3429,6 +3482,8 @@ export class ToolHandlers {
           },
         };
       } finally {
+        // Restore headless config even when the automation fails mid-flow.
+        CONFIG.headless = originalHeadless;
         // Close the page we created (but keep the context)
         await page.close();
       }
