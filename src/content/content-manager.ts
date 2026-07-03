@@ -1270,6 +1270,20 @@ export class ContentManager {
         }
 
         // If still not found, this is a failure - don't assume success
+        if (redirectedNotebook && currentUuid) {
+          log.warning(
+            `  ⚠️ Redirected notebook did not expose the source list yet; accepting current notebook as upload target`
+          );
+          return {
+            success: true,
+            sourceName,
+            notebookUrl: this.page.url(),
+            notebookId: currentUuid,
+            redirectedNotebook,
+            status: 'ready',
+          };
+        }
+
         log.warning(`  ⚠️ Dialog closed but source not found in list - upload likely failed`);
         return {
           success: false,
