@@ -1050,6 +1050,8 @@ export class ContentManager {
 
     const timeout = 90000; // 1.5 minutes (sources can take time)
     const startTime = Date.now();
+    let redirectedNotebook = false;
+    let redirectedFromNotebookUuid: string | undefined;
 
     // First, wait a bit for the dialog to close (indicates upload started)
     await randomDelay(2000, 3000);
@@ -1106,21 +1108,12 @@ export class ContentManager {
         log.info(`  🆔 Expected UUID: ${expectedNotebookUuid || 'NOT PROVIDED'}`);
 
         if (currentUuid && expectedNotebookUuid && currentUuid !== expectedNotebookUuid) {
-          log.error(`  ❌ NOTEBOOK MISMATCH! NotebookLM redirected to a different notebook!`);
-          log.error(`  ❌ Expected: ${expectedNotebookUuid}`);
-          log.error(`  ❌ Got: ${currentUuid}`);
-
-          // Navigate back to the correct notebook and try to add source properly
-          log.warning(
-            `  ⚠️ This is a known NotebookLM behavior - text sources may create new notebooks`
-          );
-
-          // Return failure with clear error message
-          return {
-            success: false,
-            error: `NotebookLM redirected to a different notebook (${currentUuid}) instead of the target (${expectedNotebookUuid}). This happens when NotebookLM creates a new notebook for pasted text. The source was added to an 'Untitled notebook' instead.`,
-            status: 'failed',
-          };
+          redirectedNotebook = true;
+          redirectedFromNotebookUuid = expectedNotebookUuid;
+          log.warning(`  ⚠️ NotebookLM redirected source upload to a different notebook`);
+          log.warning(`  ⚠️ Expected: ${expectedNotebookUuid}`);
+          log.warning(`  ⚠️ Got: ${currentUuid}`);
+          log.warning(`  ⚠️ Continuing with the notebook that actually contains the source`);
         }
 
         // Try to get notebook title for logging
@@ -1178,7 +1171,14 @@ export class ContentManager {
               // Detect source name from selector - find which locale's text is in the selector
               const detectedName =
                 pastedTextNames.find((name) => selector.includes(name)) || pastedTextNames[0];
-              return { success: true, sourceName: detectedName, status: 'ready' };
+              return {
+                success: true,
+                sourceName: detectedName,
+                notebookUrl: currentUrl,
+                notebookId: currentUuid,
+                redirectedNotebook,
+                status: 'ready',
+              };
             }
           } catch {
             continue;
@@ -1208,7 +1208,14 @@ export class ContentManager {
             const el = this.page.locator(selector).first();
             if (await el.isVisible({ timeout: 500 })) {
               log.success(`  ✅ Source added successfully: ${sourceName}`);
-              return { success: true, sourceName, status: 'ready' };
+              return {
+                success: true,
+                sourceName,
+                notebookUrl: currentUrl,
+                notebookId: currentUuid,
+                redirectedNotebook,
+                status: 'ready',
+              };
             }
           } catch {
             continue;
@@ -1228,7 +1235,14 @@ export class ContentManager {
               // Detect source name from selector - find which locale's text is in the selector
               const detectedName =
                 pastedTextNames.find((name) => selector.includes(name)) || pastedTextNames[0];
-              return { success: true, sourceName: detectedName, status: 'ready' };
+              return {
+                success: true,
+                sourceName: detectedName,
+                notebookUrl: this.page.url(),
+                notebookId: this.page.url().match(/notebook\/([a-f0-9-]+)/)?.[1],
+                redirectedNotebook,
+                status: 'ready',
+              };
             }
           } catch {
             continue;
@@ -1242,7 +1256,14 @@ export class ContentManager {
             .first();
           if (await sourceByName.isVisible({ timeout: 2000 })) {
             log.success(`  ✅ Source found after wait: ${sourceName}`);
-            return { success: true, sourceName, status: 'ready' };
+            return {
+              success: true,
+              sourceName,
+              notebookUrl: this.page.url(),
+              notebookId: this.page.url().match(/notebook\/([a-f0-9-]+)/)?.[1],
+              redirectedNotebook,
+              status: 'ready',
+            };
           }
         } catch {
           /* ignore */
@@ -1253,7 +1274,12 @@ export class ContentManager {
         return {
           success: false,
           sourceName,
-          error: 'Source not found after upload - dialog closed but source not visible in list',
+          notebookUrl: this.page.url(),
+          notebookId: this.page.url().match(/notebook\/([a-f0-9-]+)/)?.[1],
+          redirectedNotebook,
+          error: redirectedNotebook
+            ? `NotebookLM redirected from ${redirectedFromNotebookUuid} but source was not visible in the redirected notebook`
+            : 'Source not found after upload - dialog closed but source not visible in list',
           status: 'failed',
         };
       }

@@ -40,6 +40,9 @@ export interface SourceUploadResult {
   success: boolean;
   sourceId?: string;
   sourceName?: string;
+  notebookUrl?: string;
+  notebookId?: string;
+  redirectedNotebook?: boolean;
   error?: string;
   /** Processing status */
   status?: 'processing' | 'ready' | 'failed';
