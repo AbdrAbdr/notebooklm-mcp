@@ -16,6 +16,7 @@
  */
 
 import fs from 'fs';
+import type { Page } from 'patchright';
 import { LEGACY_TO_CANONICAL } from './tool-names.js';
 import { SessionManager } from '../session/session-manager.js';
 import { AuthManager } from '../auth/auth-manager.js';
@@ -2131,6 +2132,35 @@ export class ToolHandlers {
         success: false,
         error: errorMessage,
       };
+    }
+  }
+
+  async handleProbeNotebookLMAuth(): Promise<
+    ToolResult<{ authenticated: boolean; final_url: string; reason: string; checked_at: string }>
+  > {
+    let page: Page | null = null;
+    try {
+      const context = await this.sessionManager.getSharedContextManager().getOrCreateContext();
+      page = await context.newPage();
+      await page.goto('https://notebooklm.google.com/', {
+        waitUntil: 'domcontentloaded',
+        timeout: 20_000,
+      });
+      const finalUrl = page.url();
+      const authenticated = /^https:\/\/notebooklm\.google\.com\//i.test(finalUrl);
+      return {
+        success: true,
+        data: {
+          authenticated,
+          final_url: finalUrl,
+          reason: authenticated ? 'notebooklm_home_reached' : 'google_sign_in_redirect',
+          checked_at: new Date().toISOString(),
+        },
+      };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    } finally {
+      await page?.close().catch(() => undefined);
     }
   }
 

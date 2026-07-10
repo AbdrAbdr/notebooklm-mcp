@@ -6,6 +6,8 @@ echo "==========================================="
 echo "  NotebookLM MCP Server - Docker"
 echo "==========================================="
 echo ""
+# Runtime-only lock files may survive a Railway restart on the mounted volume.
+rm -f /data/chrome_profile/SingletonLock /data/chrome_profile/SingletonCookie /data/chrome_profile/SingletonSocket 2>/dev/null || true
 # Check if VNC should be started (default: yes in Docker)
 ENABLE_VNC="${ENABLE_VNC:-true}"
 if [ "$ENABLE_VNC" = "true" ]; then

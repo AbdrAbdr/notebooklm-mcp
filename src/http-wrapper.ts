@@ -63,6 +63,7 @@ app.get('/', (_req: Request, res: Response) => {
     version: process.env.npm_package_version || '1.5.2',
     endpoints: {
       health: 'GET /health',
+      auth_probe: 'GET /auth/probe',
       ask: 'POST /ask',
       batch_to_vault: 'POST /batch-to-vault',
       setup_auth: 'POST /setup-auth',
@@ -84,6 +85,11 @@ app.get('/health', async (_req: Request, res: Response) => {
       error: error instanceof Error ? error.message : String(error),
     });
   }
+});
+
+app.get('/auth/probe', async (_req: Request, res: Response) => {
+  const result = await toolHandlers.handleProbeNotebookLMAuth();
+  res.status(result.success ? 200 : 503).json(result);
 });
 
 // Ask question
