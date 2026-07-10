@@ -3399,121 +3399,73 @@ export class ToolHandlers {
 
         // Navigate to NotebookLM homepage
         await page.goto('https://notebooklm.google.com/', {
-          waitUntil: 'networkidle',
-          timeout: 30000,
+          // networkidle is unreliable on NotebookLM: long-lived Google requests
+          // can keep it pending until the Railway/Cloudflare request times out.
+          waitUntil: 'domcontentloaded',
+          timeout: 20_000,
         });
-        await randomDelay(1500, 2500);
+        await randomDelay(500, 900);
 
         await sendProgress?.('Clicking create button...', 2, 5);
         log.info('  🖱️  Looking for Create notebook button...');
 
-        const createNotebookPattern =
-          /(create|new|créer|nouveau|создать|новый|nuevo|crear|neu|erstellen).{0,40}(notebook|bloc|блокнот|cuaderno|notizbuch)|\+.{0,40}(notebook|bloc|блокнот|cuaderno|notizbuch)/i;
-        const selectorCandidates = [
-          'button:has-text("Create")',
-          'button:has-text("Créer")',
-          'button:has-text("Create notebook")',
-          'button:has-text("Créer un notebook")',
-          'button:has-text("New notebook")',
-          'button:has-text("Nouveau")',
-          '[aria-label*="Create" i]',
-          '[aria-label*="Créer" i]',
-          '[aria-label*="notebook" i]',
-          '[role="button"][aria-label*="Create" i]',
-          '[role="button"][aria-label*="Créer" i]',
-          '[role="button"]:has-text("Create")',
-          '[role="button"]:has-text("Créer")',
-          '.create-notebook-button',
-          'button.mdc-button:has-text("Create")',
-          'button.mat-mdc-button-base:has-text("Créer")',
-          'button.mat-mdc-button-base:has-text("Create")',
+        const createCandidates = [
+          page
+            .getByRole('button', {
+              name: /(create|new|создать|новый|crear|neu|créer).*?(notebook|блокнот|cuaderno|notizbuch)/i,
+            })
+            .first(),
+          page
+            .locator(
+              '[aria-label*="Create" i], [aria-label*="Создать" i], [aria-label*="New notebook" i]'
+            )
+            .first(),
+          page
+            .locator(
+              '.create-notebook-button, button:has-text("Create notebook"), button:has-text("New notebook")'
+            )
+            .first(),
+          page
+            .locator(
+              'button.mat-mdc-fab, button.mdc-fab, [data-testid*="create" i], [data-testid*="new-notebook" i]'
+            )
+            .first(),
         ];
-
         let clicked = false;
-        for (const selector of selectorCandidates) {
+        for (const candidate of createCandidates) {
           try {
-            const candidates = await page.locator(selector).all();
-            for (const candidate of candidates) {
-              const label = [
-                await candidate.textContent().catch(() => ''),
-                await candidate.getAttribute('aria-label').catch(() => ''),
-                await candidate.getAttribute('title').catch(() => ''),
-              ]
-                .filter(Boolean)
-                .join(' ')
-                .replace(/\s+/g, ' ')
-                .trim();
-
-              if (!label || !createNotebookPattern.test(label)) {
-                continue;
-              }
-
-              if (await candidate.isVisible({ timeout: 1500 })) {
-                await candidate.click();
-                clicked = true;
-                log.success(`  ✅ Clicked create notebook control: ${selector} (${label})`);
-                break;
-              }
-            }
-            if (clicked) {
-              break;
-            }
+            await candidate.click({ timeout: 2_500 });
+            clicked = true;
+            break;
           } catch {
-            // Try next selector
+            // The next bounded locator may match the current NotebookLM UI.
           }
         }
-
         if (!clicked) {
-          const interactiveCandidates = await page
-            .locator('button, [role="button"], a, [tabindex], .mat-mdc-button-base, .mdc-button')
-            .all();
-          const inspectedLabels: string[] = [];
-
-          for (const candidate of interactiveCandidates) {
-            const label = [
-              await candidate.textContent().catch(() => ''),
-              await candidate.getAttribute('aria-label').catch(() => ''),
-              await candidate.getAttribute('title').catch(() => ''),
-              await candidate.getAttribute('data-testid').catch(() => ''),
-            ]
-              .filter(Boolean)
-              .join(' ')
-              .replace(/\s+/g, ' ')
-              .trim();
-
-            if (label) {
-              inspectedLabels.push(label.slice(0, 120));
-            }
-
-            if (
-              label &&
-              createNotebookPattern.test(label) &&
-              (await candidate.isVisible({ timeout: 1000 }))
-            ) {
-              await candidate.click();
-              clicked = true;
-              log.success(`  ✅ Clicked create notebook control by inspected label: ${label}`);
-              break;
-            }
-          }
-
-          if (!clicked) {
-            const debugPath = `debug-create-notebook-${Date.now()}.png`;
-            await page.screenshot({ path: debugPath, fullPage: true }).catch(() => undefined);
-            throw new Error(
-              `Could not find Create notebook button at ${page.url()}. ` +
-                `Inspected controls: ${inspectedLabels.slice(0, 12).join(' | ') || 'none'}. ` +
-                `Screenshot: ${debugPath}`
-            );
-          }
+          const debugPath = `debug-create-notebook-${Date.now()}.png`;
+          await page.screenshot({ path: debugPath, fullPage: true }).catch(() => undefined);
+          throw new Error(
+            `Could not find Create notebook button at ${page.url()}. Screenshot: ${debugPath}`
+          );
         }
 
         await sendProgress?.('Waiting for notebook creation...', 3, 5);
         log.info('  ⏳ Waiting for new notebook to be created...');
 
-        // Wait for navigation to new notebook
-        await page.waitForURL(/notebooklm\.google\.com\/notebook\//, { timeout: 30000 });
-        await randomDelay(2000, 3000);
+        // Wait for navigation to the FINAL notebook URL.
+        //
+        // NotebookLM redirects through a transitional URL like
+        //   https://notebooklm.google.com/notebook/creating/c
+        // before landing on the real
+        //   https://notebooklm.google.com/notebook/{UUID}
+        //
+        // The previous regex `/notebook\//` matched the transitional URL
+        // immediately, so we returned `notebook/creating/c` to callers.
+        // Require a full v4 UUID in the path to be sure we've landed.
+        const NOTEBOOK_UUID_URL =
+          /notebooklm\.google\.com\/notebook\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}(?:\b|\/|$)/;
+        await page.waitForURL(NOTEBOOK_UUID_URL, { timeout: 20_000 });
+        await randomDelay(500, 900);
 
         // Get the new notebook URL
         const notebookUrl = page.url();
