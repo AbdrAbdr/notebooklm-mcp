@@ -83,6 +83,14 @@ chown -R notebooklm:notebooklm /tmp/.X11-unix || true
 # Clean up any stale X11 locks
 rm -f /tmp/.X99-lock || true
 
+# Railway can terminate Chromium without its normal shutdown sequence. These
+# lock files are runtime-only; retaining them blocks the persisted profile on
+# the next deployment even though no Chrome process is still alive.
+rm -f /data/chrome_profile/SingletonLock \
+      /data/chrome_profile/SingletonCookie \
+      /data/chrome_profile/SingletonSocket || true
+chown -R notebooklm:notebooklm /data/chrome_profile 2>/dev/null || true
+
 # Start the API as the unprivileged user. nginx remains the public foreground process.
 $SU_CMD "export HTTP_PORT=$HTTP_PORT && export PORT=$HTTP_PORT && export NODE_ENV=$NODE_ENV && export NOTEBOOKLM_DATA_DIR=/data && export PLAYWRIGHT_BROWSERS_PATH=/home/notebooklm/.cache/ms-playwright && export DISPLAY=:99 && node dist/http-wrapper.js" &
 
