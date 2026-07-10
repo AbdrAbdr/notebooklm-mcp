@@ -58,6 +58,7 @@ RUN apt-get update && apt-get install -y \
     novnc \
     websockify \
     fluxbox \
+    nginx \
     # Additional utilities
     fonts-liberation \
     fonts-noto-color-emoji \
@@ -108,7 +109,10 @@ RUN chmod +x /app/scripts/*.sh
 ENV NODE_ENV=production \
     HTTP_PORT=3000 \
     HTTP_HOST=0.0.0.0 \
-    HEADLESS=true \
+    # Use the same headed VNC browser profile for Google login and runtime jobs.
+    # A headless runtime presents a different browser context and can invalidate
+    # an otherwise valid NotebookLM Google session.
+    HEADLESS=false \
     NOTEBOOKLM_DATA_DIR=/data \
     # Playwright/Chrome settings for Docker
     PLAYWRIGHT_BROWSERS_PATH=/home/notebooklm/.cache/ms-playwright \
@@ -121,7 +125,7 @@ EXPOSE 3000 6080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider "http://localhost:${HTTP_PORT:-3000}/health" || exit 1
 
 # Data volume
 # VOLUME ["/data"]

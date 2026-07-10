@@ -52,6 +52,7 @@ describe('ToolHandlers', () => {
         total_messages: 0,
         max_sessions: 5,
       }),
+      getSharedContextManager: jest.fn(),
     };
 
     mockAuthManager = {
@@ -89,6 +90,52 @@ describe('ToolHandlers', () => {
     it('should create instance with dependencies', () => {
       const handlers = new ToolHandlers(mockSessionManager, mockAuthManager, mockLibrary);
       expect(handlers).toBeDefined();
+    });
+  });
+
+  describe('handleProbeNotebookLMAuth', () => {
+    it('reports a Google sign-in redirect as unauthenticated', async () => {
+      const page = {
+        goto: jest.fn().mockResolvedValue(undefined),
+        waitForTimeout: jest.fn().mockResolvedValue(undefined),
+        url: jest.fn().mockReturnValue('https://accounts.google.com/signin/v2/identifier'),
+        close: jest.fn().mockResolvedValue(undefined),
+      };
+      mockSessionManager.getSharedContextManager.mockReturnValue({
+        getOrCreateContext: jest.fn().mockResolvedValue({
+          newPage: jest.fn().mockResolvedValue(page),
+        }),
+      });
+
+      const handlers = new ToolHandlers(mockSessionManager, mockAuthManager, mockLibrary);
+      const result = await handlers.handleProbeNotebookLMAuth();
+
+      expect(result.success).toBe(true);
+      expect(result.data.authenticated).toBe(false);
+      expect(result.data.reason).toBe('google_sign_in_redirect');
+      expect(page.close).toHaveBeenCalled();
+    });
+
+    it('reports the NotebookLM homepage as authenticated', async () => {
+      const page = {
+        goto: jest.fn().mockResolvedValue(undefined),
+        waitForTimeout: jest.fn().mockResolvedValue(undefined),
+        url: jest.fn().mockReturnValue('https://notebooklm.google.com/'),
+        close: jest.fn().mockResolvedValue(undefined),
+      };
+      mockSessionManager.getSharedContextManager.mockReturnValue({
+        getOrCreateContext: jest.fn().mockResolvedValue({
+          newPage: jest.fn().mockResolvedValue(page),
+        }),
+      });
+
+      const handlers = new ToolHandlers(mockSessionManager, mockAuthManager, mockLibrary);
+      const result = await handlers.handleProbeNotebookLMAuth();
+
+      expect(result.success).toBe(true);
+      expect(result.data.authenticated).toBe(true);
+      expect(result.data.reason).toBe('notebooklm_home_reached');
+      expect(page.close).toHaveBeenCalled();
     });
   });
 

@@ -129,6 +129,39 @@ const sessionManager = new SessionManager(authManager);
 const library = new NotebookLibrary(sessionManager);
 const toolHandlers = new ToolHandlers(sessionManager, authManager, library);
 
+type LiveNotebookLMAuthProbe = {
+  authenticated: boolean;
+  final_url: string;
+  reason: string;
+  checked_at: string;
+};
+
+let authProbeCache: { expiresAt: number; value: LiveNotebookLMAuthProbe } | null = null;
+let authProbeInFlight: Promise<LiveNotebookLMAuthProbe> | null = null;
+
+async function probeNotebookLMAuth(force = false): Promise<LiveNotebookLMAuthProbe> {
+  if (!force && authProbeCache && authProbeCache.expiresAt > Date.now()) {
+    return authProbeCache.value;
+  }
+  if (authProbeInFlight) return authProbeInFlight;
+
+  authProbeInFlight = (async () => {
+    const result = await toolHandlers.handleProbeNotebookLMAuth();
+    if (!result.success || !result.data) {
+      throw new Error(result.error || 'NotebookLM live auth probe failed');
+    }
+    const value = result.data as LiveNotebookLMAuthProbe;
+    authProbeCache = { expiresAt: Date.now() + 60_000, value };
+    return value;
+  })();
+
+  try {
+    return await authProbeInFlight;
+  } finally {
+    authProbeInFlight = null;
+  }
+}
+
 // Root endpoint - API info
 app.get('/', (_req: Request, res: Response) => {
   res.json({
@@ -136,6 +169,7 @@ app.get('/', (_req: Request, res: Response) => {
     version: process.env.npm_package_version || '1.5.2',
     endpoints: {
       health: 'GET /health',
+      auth_probe: 'GET /auth/probe',
       ask: 'POST /ask',
       setup_auth: 'POST /setup-auth',
       notebooks: 'GET /notebooks',
@@ -154,7 +188,7 @@ app.get('/', (_req: Request, res: Response) => {
 app.get('/health', async (_req: Request, res: Response) => {
   try {
     const stats = sessionManager.getStats();
-    let authenticated = false;
+    let stateFileAuthenticated = false;
     let currentAccount: string | undefined;
 
     try {
@@ -164,7 +198,7 @@ app.get('/health', async (_req: Request, res: Response) => {
         const account = accountManager.getAccount(currentAccountId);
         if (account) {
           currentAccount = maskEmail(account.config.email);
-          authenticated = await hasValidGoogleAuthState(account.stateFilePath);
+          stateFileAuthenticated = await hasValidGoogleAuthState(account.stateFilePath);
         }
       }
     } catch (error) {
@@ -173,11 +207,17 @@ app.get('/health', async (_req: Request, res: Response) => {
       );
     }
 
+    const cachedProbe =
+      authProbeCache?.expiresAt && authProbeCache.expiresAt > Date.now()
+        ? authProbeCache.value
+        : null;
     res.json({
       success: true,
       data: {
         status: 'ok',
-        authenticated,
+        authenticated: cachedProbe ? cachedProbe.authenticated : stateFileAuthenticated,
+        auth_state_file_valid: stateFileAuthenticated,
+        auth_probe: cachedProbe,
         notebook_url: CONFIG.notebookUrl || 'not configured',
         active_sessions: stats.active_sessions,
         max_sessions: stats.max_sessions,
@@ -191,6 +231,18 @@ app.get('/health', async (_req: Request, res: Response) => {
     });
   } catch (error) {
     res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+app.get('/auth/probe', async (_req: Request, res: Response) => {
+  try {
+    const probe = await probeNotebookLMAuth();
+    res.json({ success: true, data: probe });
+  } catch (error) {
+    res.status(503).json({
       success: false,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -217,13 +269,28 @@ app.get('/accounts', async (_req: Request, res: Response) => {
 app.get('/accounts/health', async (_req: Request, res: Response) => {
   try {
     const accountManager = await getAccountManager();
-    const health = await accountManager.healthCheck();
+    const [health, liveAuth] = await Promise.all([
+      accountManager.healthCheck(),
+      probeNotebookLMAuth().catch((error) => ({
+        authenticated: false,
+        final_url: '',
+        reason: error instanceof Error ? error.message : String(error),
+        checked_at: new Date().toISOString(),
+      })),
+    ]);
     res.json({
       success: true,
-      data: health.map((entry) => ({
-        ...entry,
-        email: maskEmail(entry.email),
-      })),
+      data: health.map((entry) => {
+        const sessionValid = entry.sessionValid && liveAuth.authenticated;
+        return {
+          ...entry,
+          sessionValid,
+          issues: sessionValid
+            ? entry.issues
+            : [...entry.issues, `Live NotebookLM auth failed: ${liveAuth.reason}`],
+          email: maskEmail(entry.email),
+        };
+      }),
     });
   } catch (error) {
     res.status(500).json({
@@ -496,6 +563,30 @@ async function performManualAccountAuth(
         payload: {
           success: false,
           error: 'Manual Google auth succeeded but profile sync failed',
+        },
+      };
+    }
+
+    // The saved state file is only a local artifact. Confirm that a fresh runtime
+    // context can actually reach NotebookLM before reporting a successful login.
+    // This also prevents a stale shared context from masking a newly selected profile.
+    await sessionManager.closeAllSessions();
+    authProbeCache = null;
+    const liveAuth = await probeNotebookLMAuth(true);
+    if (!liveAuth.authenticated) {
+      const error = `NotebookLM live authentication verification failed: ${liveAuth.reason}`;
+      await accountManager.recordLoginFailure(accountId, error);
+      return {
+        statusCode: 409,
+        payload: {
+          success: false,
+          error,
+          data: {
+            accountId,
+            email: maskEmail(account.config.email),
+            durationMs,
+            authProbe: liveAuth,
+          },
         },
       };
     }

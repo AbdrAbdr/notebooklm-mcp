@@ -2924,6 +2924,64 @@ export class ToolHandlers {
     }
   }
 
+  /** Verify the server-side Google session against NotebookLM itself. */
+  async handleProbeNotebookLMAuth(): Promise<
+    ToolResult<{
+      authenticated: boolean;
+      final_url: string;
+      reason: string;
+      checked_at: string;
+    }>
+  > {
+    log.info('🔧 [TOOL] probe_notebooklm_auth called');
+    try {
+      const sharedContextManager = this.sessionManager.getSharedContextManager();
+      const context = await sharedContextManager.getOrCreateContext();
+      const page = await context.newPage();
+      try {
+        await page.goto('https://notebooklm.google.com/', {
+          waitUntil: 'domcontentloaded',
+          timeout: 45000,
+        });
+        await page.waitForTimeout(1500);
+        const finalUrl = page.url();
+        let hostname = '';
+        let safeFinalUrl = '';
+        try {
+          const parsedFinalUrl = new URL(finalUrl);
+          hostname = parsedFinalUrl.hostname.toLowerCase();
+          safeFinalUrl = `${parsedFinalUrl.origin}${parsedFinalUrl.pathname}`;
+        } catch {
+          // Invalid browser URL is reported as an unexpected destination below.
+        }
+        const redirectedToLogin =
+          hostname === 'accounts.google.com' || /\/signin|serviceLogin/i.test(finalUrl);
+        const authenticated = hostname === 'notebooklm.google.com' && !redirectedToLogin;
+        const reason = authenticated
+          ? 'notebooklm_home_reached'
+          : redirectedToLogin
+            ? 'google_sign_in_redirect'
+            : 'unexpected_notebooklm_destination';
+        log.info(`  NotebookLM live auth: ${authenticated ? 'authenticated' : reason}`);
+        return {
+          success: true,
+          data: {
+            authenticated,
+            final_url: safeFinalUrl,
+            reason,
+            checked_at: new Date().toISOString(),
+          },
+        };
+      } finally {
+        await page.close();
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log.error(`❌ [TOOL] probe_notebooklm_auth failed: ${errorMessage}`);
+      return { success: false, error: errorMessage };
+    }
+  }
+
   /**
    * Handle list_notebooks_from_nblm tool
    *
@@ -2973,6 +3031,17 @@ export class ToolHandlers {
           timeout: 60000,
         });
 
+        const postNavigationUrl = page.url();
+        if (
+          postNavigationUrl.includes('accounts.google.com') ||
+          /\/signin|serviceLogin/i.test(postNavigationUrl)
+        ) {
+          return {
+            success: false,
+            error: 'NotebookLM authentication expired: Google sign-in redirect',
+          };
+        }
+
         // Wait for the page to fully render and show notebook cards
         // The homepage shows a grid of notebook cards with links
         await sendProgress?.('Waiting for notebooks to load...', 2, 5);
@@ -2991,6 +3060,10 @@ export class ToolHandlers {
           // Check if we're on a login/redirect page
           if (currentUrl.includes('accounts.google.com') || currentUrl.includes('signin')) {
             log.warning('  ⚠️ Redirected to Google login page - cookies may have expired');
+            return {
+              success: false,
+              error: 'NotebookLM authentication expired: Google sign-in redirect',
+            };
           }
 
           // Log all links on the page for debugging
@@ -3098,9 +3171,6 @@ export class ToolHandlers {
         await sendProgress?.('Done!', 5, 5);
         log.success(`  ✅ Found ${notebooks.length} notebooks`);
 
-        // Restore headless config
-        CONFIG.headless = originalHeadless;
-
         return {
           success: true,
           data: {
@@ -3110,6 +3180,7 @@ export class ToolHandlers {
           },
         };
       } finally {
+        CONFIG.headless = originalHeadless;
         // Close the page we created (but keep the context)
         await page.close();
       }

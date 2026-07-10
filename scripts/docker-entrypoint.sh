@@ -19,21 +19,15 @@ fi
 export SU_CMD="su -s /bin/bash notebooklm -c"
 
 ENABLE_VNC="${ENABLE_VNC:-true}"
-
-if [ "$VNC_MODE" = "true" ]; then
-    echo "[Entrypoint] VNC_MODE is TRUE. Routing public traffic to VNC."
-    export NOVNC_PORT=$PORT
-    export HTTP_PORT=3000
-    export PORT=3000
-
-    echo "[Entrypoint] Will automatically launch browser in 10s..."
-    $SU_CMD "node -e \"setTimeout(() => { fetch('http://localhost:3000/setup-auth', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'}).then(r => console.log('Auth triggered:', r.status)).catch(console.error); }, 10000);\" &"
-else
-    echo "[Entrypoint] VNC_MODE is FALSE. Routing public traffic to HTTP API."
-    export HTTP_PORT=$PORT
-    export NOVNC_PORT=6080
-    export PORT=$HTTP_PORT
+PUBLIC_PORT="${PORT:-8080}"
+HTTP_PORT="${NOTEBOOKLM_API_PORT:-3000}"
+if [ "$HTTP_PORT" = "$PUBLIC_PORT" ]; then
+    HTTP_PORT=3001
 fi
+NOVNC_PORT="${NOVNC_PORT:-6080}"
+export PUBLIC_PORT HTTP_PORT NOVNC_PORT
+
+echo "[Entrypoint] Public reverse proxy: ${PUBLIC_PORT}; API: ${HTTP_PORT}; noVNC: ${NOVNC_PORT}."
 
 if [ "$ENABLE_VNC" = "true" ]; then
     echo "[Entrypoint] Starting VNC services..."
@@ -44,7 +38,41 @@ if [ "$ENABLE_VNC" = "true" ]; then
     echo ""
 fi
 
-echo "[Entrypoint] Starting Node.js HTTP server on port ${HTTP_PORT}..."
+cat >/etc/nginx/nginx.conf <<EOF
+worker_processes 1;
+pid /tmp/nginx.pid;
+error_log /dev/stderr info;
+
+events { worker_connections 1024; }
+
+http {
+    access_log /dev/stdout;
+    server {
+        listen ${PUBLIC_PORT};
+        server_name _;
+
+        location ~ ^/(vnc\.html|app/|core/|vendor/|favicon\.ico|websockify) {
+            proxy_pass http://127.0.0.1:${NOVNC_PORT};
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host \$host;
+            proxy_read_timeout 3600s;
+        }
+
+        location / {
+            proxy_pass http://127.0.0.1:${HTTP_PORT};
+            proxy_http_version 1.1;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_read_timeout 900s;
+        }
+    }
+}
+EOF
+
+echo "[Entrypoint] Starting Node.js HTTP server on port ${HTTP_PORT} behind nginx..."
 echo ""
 
 # Ensure X11 temp dir exists with right permissions
@@ -55,5 +83,12 @@ chown -R notebooklm:notebooklm /tmp/.X11-unix || true
 # Clean up any stale X11 locks
 rm -f /tmp/.X99-lock || true
 
-# Start the Node.js server (foreground) dropping root privileges
-exec su -s /bin/bash notebooklm -c "export HTTP_PORT=$HTTP_PORT && export PORT=$PORT && export NODE_ENV=$NODE_ENV && export NOTEBOOKLM_DATA_DIR=/data && export PLAYWRIGHT_BROWSERS_PATH=/home/notebooklm/.cache/ms-playwright && export DISPLAY=:99 && node dist/http-wrapper.js"
+# Start the API as the unprivileged user. nginx remains the public foreground process.
+$SU_CMD "export HTTP_PORT=$HTTP_PORT && export PORT=$HTTP_PORT && export NODE_ENV=$NODE_ENV && export NOTEBOOKLM_DATA_DIR=/data && export PLAYWRIGHT_BROWSERS_PATH=/home/notebooklm/.cache/ms-playwright && export DISPLAY=:99 && node dist/http-wrapper.js" &
+
+if [ "$VNC_MODE" = "true" ]; then
+    echo "[Entrypoint] VNC_MODE is TRUE. Launching the interactive Google login in 10s."
+    $SU_CMD "node -e \"setTimeout(() => { fetch('http://localhost:$HTTP_PORT/setup-auth', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'}).then(r => console.log('Auth triggered:', r.status)).catch(console.error); }, 10000);\" &"
+fi
+
+exec nginx -g 'daemon off;'
