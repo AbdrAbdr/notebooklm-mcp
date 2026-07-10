@@ -1203,6 +1203,14 @@ app.post('/notebooks/create', async (req: Request, res: Response) => {
       }
     );
 
+    if (
+      !result.success &&
+      /authentication expired|google sign-in redirect/i.test(String(result.error || ''))
+    ) {
+      res.status(401).json(result);
+      return;
+    }
+
     res.json(result);
   } catch (error) {
     res.status(500).json({

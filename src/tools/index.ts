@@ -3406,6 +3406,17 @@ export class ToolHandlers {
         });
         await randomDelay(500, 900);
 
+        const landingUrl = page.url();
+        if (
+          landingUrl.includes('accounts.google.com') ||
+          /\/signin|serviceLogin/i.test(landingUrl)
+        ) {
+          return {
+            success: false,
+            error: 'NotebookLM authentication expired: Google sign-in redirect',
+          };
+        }
+
         await sendProgress?.('Clicking create button...', 2, 5);
         log.info('  🖱️  Looking for Create notebook button...');
 
