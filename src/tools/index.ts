@@ -3915,57 +3915,54 @@ export class ToolHandlers {
 
         // Navigate to NotebookLM homepage
         await page.goto('https://notebooklm.google.com/', {
-          waitUntil: 'networkidle',
-          timeout: 30000,
+          // networkidle is unreliable on NotebookLM: long-lived Google requests
+          // can keep it pending until the Railway/Cloudflare request times out.
+          waitUntil: 'domcontentloaded',
+          timeout: 20_000,
         });
-        await randomDelay(1500, 2500);
+        await randomDelay(500, 900);
 
         await sendProgress?.('Clicking create button...', 2, 5);
         log.info('  🖱️  Looking for Create notebook button...');
 
-        // Look for "Create" or "Créer" button
-        const createButtonSelectors = [
-          'button:has-text("Create")',
-          'button:has-text("Créer")',
-          'button:has-text("New notebook")',
-          'button:has-text("Nouveau")',
-          '[aria-label*="Create"]',
-          '[aria-label*="Créer"]',
-          '.create-notebook-button',
-          'button.mdc-button:has-text("Create")',
+        const createCandidates = [
+          page
+            .getByRole('button', {
+              name: /(create|new|создать|новый|crear|neu|créer).*?(notebook|блокнот|cuaderno|notizbuch)/i,
+            })
+            .first(),
+          page
+            .locator(
+              '[aria-label*="Create" i], [aria-label*="Создать" i], [aria-label*="New notebook" i]'
+            )
+            .first(),
+          page
+            .locator(
+              '.create-notebook-button, button:has-text("Create notebook"), button:has-text("New notebook")'
+            )
+            .first(),
+          page
+            .locator(
+              'button.mat-mdc-fab, button.mdc-fab, [data-testid*="create" i], [data-testid*="new-notebook" i]'
+            )
+            .first(),
         ];
-
         let clicked = false;
-        for (const selector of createButtonSelectors) {
+        for (const candidate of createCandidates) {
           try {
-            const btn = page.locator(selector).first();
-            if (await btn.isVisible({ timeout: 2000 })) {
-              await btn.click();
-              clicked = true;
-              log.success(`  ✅ Clicked: ${selector}`);
-              break;
-            }
+            await candidate.click({ timeout: 2_500 });
+            clicked = true;
+            break;
           } catch {
-            // Try next selector
+            // The next bounded locator may match the current NotebookLM UI.
           }
         }
-
         if (!clicked) {
-          // Try finding any button with "+" icon or create text
-          const allButtons = await page.locator('button').all();
-          for (const btn of allButtons) {
-            const text = await btn.textContent();
-            if (text && (text.includes('Create') || text.includes('Créer') || text.includes('+'))) {
-              await btn.click();
-              clicked = true;
-              log.success(`  ✅ Clicked button with text: ${text}`);
-              break;
-            }
-          }
-        }
-
-        if (!clicked) {
-          throw new Error('Could not find Create notebook button');
+          const debugPath = `debug-create-notebook-${Date.now()}.png`;
+          await page.screenshot({ path: debugPath, fullPage: true }).catch(() => undefined);
+          throw new Error(
+            `Could not find Create notebook button at ${page.url()}. Screenshot: ${debugPath}`
+          );
         }
 
         await sendProgress?.('Waiting for notebook creation...', 3, 5);
@@ -3983,10 +3980,8 @@ export class ToolHandlers {
         // Require a full v4 UUID in the path to be sure we've landed.
         const NOTEBOOK_UUID_URL =
           /notebooklm\.google\.com\/notebook\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}(?:\b|\/|$)/;
-        await page.waitForURL(NOTEBOOK_UUID_URL, { timeout: 30000 });
-        // Then wait for the page to settle so the title field is editable.
-        await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-        await randomDelay(1500, 2500);
+        await page.waitForURL(NOTEBOOK_UUID_URL, { timeout: 20_000 });
+        await randomDelay(500, 900);
 
         // Parse the final URL/UUID with the same strict pattern.
         const notebookUrl = page.url();
