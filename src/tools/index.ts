@@ -3459,9 +3459,53 @@ export class ToolHandlers {
             )
             .first(),
         ];
+
+        // NotebookLM can report an authenticated home page before its create
+        // action has become interactive. Treating a disabled Material button
+        // as a successful click wastes the whole 90-second creation window.
+        // Give the page a bounded hydration period and one clean reload before
+        // deciding that Google has not made creation available to this account.
+        const createReadyDeadline = Date.now() + 45_000;
+        let refreshedNotebookHome = false;
+        let interactiveCreateCandidate: (typeof createCandidates)[number] | null = null;
+        while (Date.now() < createReadyDeadline && !interactiveCreateCandidate) {
+          for (const candidate of createCandidates) {
+            const isVisible = await candidate.isVisible({ timeout: 1_000 }).catch(() => false);
+            const isEnabled = isVisible && (await candidate.isEnabled().catch(() => false));
+            if (isEnabled) {
+              interactiveCreateCandidate = candidate;
+              break;
+            }
+          }
+
+          if (interactiveCreateCandidate) break;
+
+          if (!refreshedNotebookHome && Date.now() >= createReadyDeadline - 30_000) {
+            refreshedNotebookHome = true;
+            log.info(
+              '  ↻ NotebookLM create control is still disabled; reloading the home page once...'
+            );
+            await page
+              .reload({ waitUntil: 'domcontentloaded', timeout: 20_000 })
+              .catch(() => undefined);
+            await page.waitForTimeout(3_000);
+            continue;
+          }
+
+          await page.waitForTimeout(1_000);
+        }
+
+        if (!interactiveCreateCandidate) {
+          throw new Error(
+            'NotebookLM create control remained disabled after the authenticated home page was refreshed. ' +
+              'The Google account is signed in, but NotebookLM is not currently permitting new notebook creation.'
+          );
+        }
+
         let clicked = false;
-        for (const candidate of createCandidates) {
+        for (const candidate of [interactiveCreateCandidate, ...createCandidates]) {
           try {
+            if (!(await candidate.isEnabled().catch(() => false))) continue;
             await candidate.click({ timeout: 2_500 });
             clicked = true;
             break;

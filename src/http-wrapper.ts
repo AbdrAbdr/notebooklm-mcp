@@ -207,17 +207,21 @@ app.get('/health', async (_req: Request, res: Response) => {
       );
     }
 
-    const cachedProbe =
-      authProbeCache?.expiresAt && authProbeCache.expiresAt > Date.now()
-        ? authProbeCache.value
-        : null;
+    // The saved state only proves that a cookie file exists. Prefer the live
+    // NotebookLM probe so health cannot report a stale Google session as valid.
+    const liveProbe = await probeNotebookLMAuth().catch((error) => ({
+      authenticated: false,
+      final_url: '',
+      reason: error instanceof Error ? error.message : String(error),
+      checked_at: new Date().toISOString(),
+    }));
     res.json({
       success: true,
       data: {
         status: 'ok',
-        authenticated: cachedProbe ? cachedProbe.authenticated : stateFileAuthenticated,
+        authenticated: liveProbe.authenticated,
         auth_state_file_valid: stateFileAuthenticated,
-        auth_probe: cachedProbe,
+        auth_probe: liveProbe,
         notebook_url: CONFIG.notebookUrl || 'not configured',
         active_sessions: stats.active_sessions,
         max_sessions: stats.max_sessions,
