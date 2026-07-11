@@ -27,7 +27,12 @@ import type {
   NotebookEntry,
   LibraryStats,
 } from '../library/types.js';
-import { CONFIG, applyBrowserOptions, type BrowserOptions } from '../config.js';
+import {
+  CONFIG,
+  NOTEBOOKLM_HOME_URL,
+  applyBrowserOptions,
+  type BrowserOptions,
+} from '../config.js';
 import { log } from '../utils/logger.js';
 import type {
   AskQuestionResult,
@@ -2939,7 +2944,7 @@ export class ToolHandlers {
       const context = await sharedContextManager.getOrCreateContext();
       const page = await context.newPage();
       try {
-        await page.goto('https://notebooklm.google.com/', {
+        await page.goto(NOTEBOOKLM_HOME_URL, {
           waitUntil: 'domcontentloaded',
           timeout: 45000,
         });
@@ -3026,7 +3031,7 @@ export class ToolHandlers {
         log.info('  📄 Navigating to NotebookLM homepage...');
 
         // Navigate to NotebookLM homepage
-        await page.goto('https://notebooklm.google.com/', {
+        await page.goto(NOTEBOOKLM_HOME_URL, {
           waitUntil: 'domcontentloaded',
           timeout: 60000,
         });
@@ -3246,7 +3251,7 @@ export class ToolHandlers {
 
           try {
             // Navigate to homepage
-            await page.goto('https://notebooklm.google.com/', {
+            await page.goto(NOTEBOOKLM_HOME_URL, {
               waitUntil: 'domcontentloaded',
               timeout: 30000,
             });
@@ -3398,7 +3403,7 @@ export class ToolHandlers {
         log.info('  📄 Navigating to NotebookLM homepage...');
 
         // Navigate to NotebookLM homepage
-        await page.goto('https://notebooklm.google.com/', {
+        await page.goto(NOTEBOOKLM_HOME_URL, {
           // networkidle is unreliable on NotebookLM: long-lived Google requests
           // can keep it pending until the Railway/Cloudflare request times out.
           waitUntil: 'domcontentloaded',

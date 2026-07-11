@@ -20,12 +20,16 @@ import path from 'path';
 // IMPORTANT: Pass empty string suffix to disable envPaths' default '-nodejs' suffix!
 const paths = envPaths('notebooklm-mcp', { suffix: '' });
 
+/** Primary NotebookLM UI is always kept in English for stable automation. */
+export const NOTEBOOKLM_HOME_URL = 'https://notebooklm.google.com/?hl=en';
+
 /**
- * Google NotebookLM Auth URL (used by setup_auth)
- * This is the base Google login URL that redirects to NotebookLM
+ * Google NotebookLM Auth URL (used by setup_auth).
+ * Keep both Google and the destination URL in English so the persisted
+ * provider profile and the UI locators use one predictable language.
  */
 export const NOTEBOOKLM_AUTH_URL =
-  'https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fnotebooklm.google.com%2F&flowName=GlifWebSignIn&flowEntry=ServiceLogin';
+  'https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fnotebooklm.google.com%2F%3Fhl%3Den&flowName=GlifWebSignIn&flowEntry=ServiceLogin&hl=en';
 
 export interface Config {
   // NotebookLM - optional, used for legacy default notebook
