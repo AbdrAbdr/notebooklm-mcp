@@ -85,6 +85,32 @@ export class ContentManager {
   async addSource(input: SourceUploadInput): Promise<SourceUploadResult> {
     log.info(`📄 Adding source: ${input.type}`);
 
+    // Reject invalid requests before touching the browser. Apart from avoiding
+    // unnecessary UI work, this keeps a stale NotebookLM overlay from masking
+    // a useful validation error.
+    if (input.type === 'file') {
+      if (!input.filePath) return { success: false, error: 'File path is required' };
+      const resolvedPath = path.resolve(input.filePath);
+      const allowedDir = path.resolve(CONFIG.dataDir);
+      const cwd = path.resolve(process.cwd());
+      if (!resolvedPath.startsWith(allowedDir) && !resolvedPath.startsWith(cwd)) {
+        return {
+          success: false,
+          error:
+            'File path not allowed: must be within data directory or current working directory',
+        };
+      }
+    }
+    if (
+      (input.type === 'url' || input.type === 'youtube' || input.type === 'google_drive') &&
+      !input.url
+    ) {
+      return { success: false, error: 'URL is required' };
+    }
+    if (input.type === 'text' && !input.text) {
+      return { success: false, error: 'Text content is required' };
+    }
+
     // CRITICAL: Capture initial URL BEFORE any action
     // NotebookLM may redirect when clicking "Add source" button!
     const initialUrl = this.page.url();
@@ -130,17 +156,10 @@ export class ContentManager {
     // Wait for panel to be ready (increased for reliability)
     await randomDelay(800, 1200);
 
-    // Check if a dialog is already open and close it first
-    try {
-      const existingDialog = this.page.locator('[role="dialog"]');
-      if (await existingDialog.isVisible({ timeout: 500 })) {
-        log.info('  ⚠️ Dialog already open, closing first...');
-        await this.page.keyboard.press('Escape');
-        await randomDelay(500, 800);
-      }
-    } catch {
-      // No existing dialog, continue
-    }
+    // A stale NotebookLM overlay can intercept every Source tab/button click.
+    // Dismissing it explicitly is safer than treating its “Create notebook”
+    // action as the source-panel add button.
+    await this.dismissBlockingDialog();
 
     const addSourceSelectors = [
       // NotebookLM current UI (Dec 2024) - aria-label based (most reliable)
@@ -164,10 +183,15 @@ export class ContentManager {
 
     for (const selector of addSourceSelectors) {
       try {
-        const button = this.page.locator(selector).first();
-        if (await button.isVisible({ timeout: 1000 })) {
+        const buttons = await this.page.locator(selector).all();
+        for (const button of buttons) {
+          if (!(await button.isVisible({ timeout: 1000 }))) continue;
+          const insideDialog = await button.evaluate((element) =>
+            Boolean(element.closest('[role="dialog"]'))
+          );
+          if (insideDialog) continue;
           log.info(`  ✅ Found add source button: ${selector}`);
-          await realisticClick(this.page, selector, true);
+          await button.click({ timeout: 5000 });
           await randomDelay(500, 1000);
           return;
         }
@@ -182,7 +206,10 @@ export class ContentManager {
       const addButtons = await this.page.locator('button[aria-label]').all();
       for (const btn of addButtons) {
         const ariaLabel = await btn.getAttribute('aria-label');
-        if (ariaLabel && /add|ajouter|upload|source/i.test(ariaLabel)) {
+        const insideDialog = await btn.evaluate((element) =>
+          Boolean(element.closest('[role="dialog"]'))
+        );
+        if (!insideDialog && ariaLabel && /add|ajouter|upload|source/i.test(ariaLabel)) {
           if (await btn.isVisible()) {
             log.info(`  ✅ Found add button via fallback: aria-label="${ariaLabel}"`);
             await btn.click();
@@ -207,17 +234,7 @@ export class ContentManager {
   private async ensureSourcesPanel(): Promise<void> {
     log.info(`  📑 Ensuring Sources panel is active...`);
 
-    // First, close any open dialogs that might be blocking
-    try {
-      const openDialog = this.page.locator('[role="dialog"]');
-      if (await openDialog.isVisible({ timeout: 500 })) {
-        log.info(`  ⚠️ Closing blocking dialog first...`);
-        await this.page.keyboard.press('Escape');
-        await randomDelay(300, 500);
-      }
-    } catch {
-      /* no dialog */
-    }
+    await this.dismissBlockingDialog();
 
     const sourcesTabSelectors = [
       // NotebookLM current UI (Dec 2024) - MDC tabs (bilingual FR/EN via i18n)
@@ -274,6 +291,30 @@ export class ContentManager {
       }
     } catch (e) {
       log.warning(`  ⚠️ Could not capture debug info: ${e}`);
+    }
+  }
+
+  private async dismissBlockingDialog(): Promise<void> {
+    const dialog = this.page.locator('[role="dialog"]').first();
+    try {
+      if (!(await dialog.isVisible({ timeout: 500 }))) return;
+      log.info('  ⚠️ Closing blocking NotebookLM dialog...');
+
+      const closeButton = this.page
+        .locator(
+          '[role="dialog"] button[aria-label="Close"], [role="dialog"] button[aria-label="close"], [role="dialog"] .close-button, [role="dialog"] [data-mdc-dialog-action="close"]'
+        )
+        .first();
+      if (await closeButton.isVisible({ timeout: 750 })) {
+        await closeButton.click({ timeout: 3000 });
+      } else {
+        await this.page.keyboard.press('Escape');
+      }
+      await randomDelay(300, 500);
+    } catch (error) {
+      throw new Error(
+        `Could not dismiss blocking NotebookLM dialog: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
