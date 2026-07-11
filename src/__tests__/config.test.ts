@@ -6,7 +6,7 @@ describe('Config Module', () => {
   describe('NOTEBOOKLM_AUTH_URL', () => {
     it('should export the correct auth URL', () => {
       expect(NOTEBOOKLM_AUTH_URL).toBe(
-        'https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fnotebooklm.google.com%2F&flowName=GlifWebSignIn&flowEntry=ServiceLogin'
+        'https://accounts.google.com/v3/signin/identifier?continue=https%3A%2F%2Fnotebooklm.google.com%2F%3Fhl%3Den&flowName=GlifWebSignIn&flowEntry=ServiceLogin&hl=en'
       );
     });
 

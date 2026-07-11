@@ -21,6 +21,7 @@ import { AutoLoginManager, getAccountManager, maskEmail } from './accounts/index
 import type { RotationStrategy } from './accounts/index.js';
 import { CONFIG } from './config.js';
 import { log } from './utils/logger.js';
+import { buildRPCAuthBundle } from './rpc-auth-broker.js';
 
 // Extend Express Request to include requestId
 declare global {
@@ -298,6 +299,32 @@ app.get('/accounts/health', async (_req: Request, res: Response) => {
     });
   } catch (error) {
     res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Server-to-server auth broker for the RPC pilot. This route never reaches the
+// admin browser: Cloudflare reads the bundle and immediately imports it into
+// the isolated Railway service.
+app.get('/rpc/auth-bundle', async (req: Request, res: Response) => {
+  try {
+    const accountManager = await getAccountManager();
+    const result = await buildRPCAuthBundle({
+      expectedToken: process.env.NOTEBOOKLM_RPC_BROKER_TOKEN,
+      suppliedToken: String(req.headers['x-rpc-broker-token'] || ''),
+      accounts: accountManager.listAccounts(),
+      readState: async (statePath) => JSON.parse(await fs.readFile(statePath, 'utf8')),
+      onSkip: (accountId, error) =>
+        log.warning(
+          `RPC auth bundle skipped account ${accountId}: ${error instanceof Error ? error.message : String(error)}`
+        ),
+    });
+    res.setHeader('Cache-Control', result.headers['Cache-Control']);
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : String(error),
     });

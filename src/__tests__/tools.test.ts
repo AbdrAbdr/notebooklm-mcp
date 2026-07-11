@@ -27,6 +27,7 @@ jest.unstable_mockModule('../config.js', () => ({
     viewport: { width: 1920, height: 1080 },
   },
   NOTEBOOKLM_AUTH_URL: 'https://notebooklm.google.com/',
+  NOTEBOOKLM_HOME_URL: 'https://notebooklm.google.com/?hl=en',
   applyBrowserOptions: jest.fn((options: any) => options),
 }));
 
