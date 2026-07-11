@@ -129,6 +129,22 @@ export class ContentGenerator {
           log.info(`  Style selected successfully`);
         }
 
+        if (input.type === 'video') {
+          const videoConfirmed = await this.confirmVideoGeneration();
+          if (!videoConfirmed) {
+            throw new Error(
+              'NotebookLM opened the Video Overview configuration but the final Generate button was not found'
+            );
+          }
+
+          log.info(`  Started ${config.displayName} generation via Studio button`);
+          return {
+            success: true,
+            contentType: input.type,
+            status: 'generating',
+          };
+        }
+
         log.info(`  Started ${config.displayName} generation via Studio button`);
 
         // Wait for generation to complete
@@ -401,6 +417,50 @@ export class ContentGenerator {
 
     // Style button not found - this is normal if UI doesn't have style selection
     log.info(`  No style selection UI found, proceeding with default`);
+    return false;
+  }
+
+  /**
+   * NotebookLM's current Video Overview flow opens a configuration dialog after
+   * selecting the format and focus. The video render does not start until its
+   * final Generate button is clicked.
+   */
+  private async confirmVideoGeneration(): Promise<boolean> {
+    await randomDelay(400, 800);
+
+    const selectors = [
+      '[role="dialog"] button:has-text("Generate")',
+      '.mat-mdc-dialog-container button:has-text("Generate")',
+      'button:has-text("Generate")',
+      '[role="button"]:has-text("Generate")',
+    ];
+
+    for (const selector of selectors) {
+      try {
+        const buttons = this.page.locator(selector);
+        const count = await buttons.count();
+        for (let index = 0; index < count; index += 1) {
+          const button = buttons.nth(index);
+          const label = (await button.textContent())?.trim() || '';
+          if (
+            !/^generate$/i.test(label) ||
+            !(await button.isVisible()) ||
+            !(await button.isEnabled())
+          ) {
+            continue;
+          }
+
+          await button.scrollIntoViewIfNeeded();
+          await button.click();
+          await randomDelay(400, 800);
+          log.info('  Confirmed Video Overview generation');
+          return true;
+        }
+      } catch {
+        continue;
+      }
+    }
+
     return false;
   }
 
