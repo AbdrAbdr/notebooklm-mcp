@@ -3547,11 +3547,34 @@ export class ToolHandlers {
         // Require a full v4 UUID in the path to be sure we've landed.
         const NOTEBOOK_UUID_URL =
           /notebooklm\.google\.com\/notebook\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}(?:\b|\/|$)/;
-        await page.waitForURL(NOTEBOOK_UUID_URL, { timeout: 20_000 });
+        // Google can take longer than 20 seconds to allocate a notebook and
+        // may open it in another page. Poll the shared context so this stays
+        // correct for both navigation patterns and does not repeat a click.
+        const notebookDeadline = Date.now() + 90_000;
+        let notebookPage = page;
+        while (Date.now() < notebookDeadline) {
+          const openedNotebook = context
+            .pages()
+            .find((candidatePage) => NOTEBOOK_UUID_URL.test(candidatePage.url()));
+          if (openedNotebook) {
+            notebookPage = openedNotebook;
+            break;
+          }
+          await page.waitForTimeout(1_000);
+        }
+        if (!NOTEBOOK_UUID_URL.test(notebookPage.url())) {
+          const openUrls = context
+            .pages()
+            .map((candidatePage) => candidatePage.url())
+            .join(' | ');
+          throw new Error(
+            `NotebookLM did not provide a final notebook URL within 90 seconds. Open pages: ${openUrls || 'none'}`
+          );
+        }
         await randomDelay(500, 900);
 
         // Get the new notebook URL
-        const notebookUrl = page.url();
+        const notebookUrl = notebookPage.url();
         const notebookIdMatch = notebookUrl.match(/notebook\/([a-f0-9-]+)/);
         const notebookId = notebookIdMatch ? notebookIdMatch[1] : 'unknown';
 
