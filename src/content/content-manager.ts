@@ -162,10 +162,20 @@ export class ContentManager {
     // Wait for panel to be ready (increased for reliability)
     await randomDelay(800, 1200);
 
+    if (await this.hasOpenSourcePicker()) {
+      log.info('  ✅ NotebookLM source picker became available while loading Sources');
+      return;
+    }
+
     // A stale NotebookLM overlay can intercept every Source tab/button click.
     // Dismissing it explicitly is safer than treating its “Create notebook”
     // action as the source-panel add button.
     await this.dismissBlockingDialog();
+
+    if (await this.hasOpenSourcePicker()) {
+      log.info('  ✅ Reusing NotebookLM source picker after dialog check');
+      return;
+    }
 
     const addSourceSelectors = [
       // NotebookLM current UI (Dec 2024) - aria-label based (most reliable)
@@ -301,6 +311,13 @@ export class ContentManager {
   }
 
   private async dismissBlockingDialog(): Promise<void> {
+    // The current NotebookLM source picker is rendered outside a role=dialog
+    // on some builds. Never close it while looking for a stale overlay.
+    if (await this.hasOpenSourcePicker()) {
+      log.info('  ℹ️ Source picker is already open; preserving it');
+      return;
+    }
+
     const dialog = this.page.locator('[role="dialog"]').first();
     try {
       if (!(await dialog.isVisible({ timeout: 500 }))) return;
@@ -325,13 +342,25 @@ export class ContentManager {
   }
 
   private async hasOpenSourcePicker(): Promise<boolean> {
-    const picker = this.page
-      .locator(
-        '[role="dialog"] button:has-text("Copied text"), [role="dialog"] button:has-text("Upload files"), [role="dialog"] button:has-text("Websites")'
-      )
-      .first();
     try {
-      return await picker.isVisible({ timeout: 750 });
+      // NotebookLM's current picker is a source grid, not always a dialog.
+      // The production DOM exposes these as visible `drop-zone-icon-button`s.
+      const options = await this.page.locator('button.drop-zone-icon-button').all();
+      let sourceOptionCount = 0;
+      for (const option of options) {
+        if (!(await option.isVisible({ timeout: 750 }))) continue;
+        const text = ((await option.textContent({ timeout: 750 })) || '')
+          .replace(/\s+/g, ' ')
+          .toLowerCase();
+        if (
+          text.includes('upload files') ||
+          text.includes('websites') ||
+          text.includes('copied text')
+        ) {
+          sourceOptionCount += 1;
+        }
+      }
+      return sourceOptionCount >= 2;
     } catch {
       return false;
     }
@@ -677,6 +706,8 @@ export class ContentManager {
     try {
       // Click on paste text option (bilingual FR/EN via i18n)
       const textTypeSelectors = [
+        // Current NotebookLM picker may not be inside role=dialog.
+        'button.drop-zone-icon-button:has-text("Copied text")',
         // Span element with pasted text label
         ...i18nSelectors('span:has-text("{text}")', 'sourceTypes', 'pastedText'),
         ...i18nSelectors(

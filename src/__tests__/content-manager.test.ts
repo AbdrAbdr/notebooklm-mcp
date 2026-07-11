@@ -47,6 +47,7 @@ describe('ContentManager', () => {
         fill: jest.fn().mockResolvedValue(undefined),
         textContent: jest.fn().mockResolvedValue(''),
         count: jest.fn().mockResolvedValue(0),
+        all: jest.fn().mockResolvedValue([]),
       }),
       waitForSelector: jest.fn().mockResolvedValue(null),
       waitForTimeout: jest.fn().mockResolvedValue(undefined),
@@ -70,6 +71,32 @@ describe('ContentManager', () => {
   });
 
   describe('Add Source', () => {
+    it('recognizes the current source picker when it is not rendered as a dialog', async () => {
+      const visibleOption = (text: string) => ({
+        isVisible: jest.fn().mockResolvedValue(true),
+        textContent: jest.fn().mockResolvedValue(text),
+      });
+      mockPage.locator.mockImplementation((selector: string) => {
+        if (selector === 'button.drop-zone-icon-button') {
+          return {
+            all: jest
+              .fn()
+              .mockResolvedValue([
+                visibleOption('upload Upload files'),
+                visibleOption('content_paste Copied text'),
+              ]),
+          };
+        }
+        return {
+          first: jest.fn().mockReturnValue({ isVisible: jest.fn().mockResolvedValue(false) }),
+          all: jest.fn().mockResolvedValue([]),
+        };
+      });
+
+      const manager = new ContentManager(mockPage);
+      await expect(manager.hasOpenSourcePicker()).resolves.toBe(true);
+    });
+
     it('should return error for unsupported source type', async () => {
       const manager = new ContentManager(mockPage);
 
