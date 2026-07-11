@@ -37,6 +37,7 @@ export class SharedContextManager {
   private currentProfileDir: string | null = null;
   private isIsolatedProfile: boolean = false;
   private currentHeadlessMode: boolean | null = null;
+  private contextInitPromise: Promise<BrowserContext> | null = null;
 
   constructor(authManager: AuthManager) {
     this.authManager = authManager;
@@ -64,21 +65,41 @@ export class SharedContextManager {
    * @param overrideHeadless Optional override for headless mode (true = headless, false = visible)
    */
   async getOrCreateContext(overrideHeadless?: boolean): Promise<BrowserContext> {
-    // Check if headless mode needs to be changed (e.g., show_browser=true)
-    // If yes, close the browser so it gets recreated with the new mode
-    if (this.needsHeadlessModeChange(overrideHeadless)) {
-      log.warning('🔄 Headless mode change detected - recreating browser context...');
-      await this.closeContext();
+    // Multiple HTTP/queue requests can arrive during a cold start. A persistent
+    // Chromium profile permits only one launcher, so every concurrent caller
+    // must await the same initialization rather than race for SingletonLock.
+    if (this.contextInitPromise) {
+      log.info('⏳ Waiting for the shared persistent browser context...');
+      return this.contextInitPromise;
     }
 
-    if (await this.needsRecreation()) {
-      log.warning('🔄 Creating/Loading persistent context...');
-      await this.recreateContext(overrideHeadless);
-    } else {
-      log.success('♻️  Reusing existing persistent context');
-    }
+    const initialize = async (): Promise<BrowserContext> => {
+      // Check if headless mode needs to be changed (e.g., show_browser=true)
+      // If yes, close the browser so it gets recreated with the new mode
+      if (this.needsHeadlessModeChange(overrideHeadless)) {
+        log.warning('🔄 Headless mode change detected - recreating browser context...');
+        await this.closeContext();
+      }
 
-    return this.globalContext!;
+      if (await this.needsRecreation()) {
+        log.warning('🔄 Creating/Loading persistent context...');
+        await this.recreateContext(overrideHeadless);
+      } else {
+        log.success('♻️  Reusing existing persistent context');
+      }
+
+      return this.globalContext!;
+    };
+
+    const initialization = initialize();
+    this.contextInitPromise = initialization;
+    try {
+      return await initialization;
+    } finally {
+      if (this.contextInitPromise === initialization) {
+        this.contextInitPromise = null;
+      }
+    }
   }
 
   /**
