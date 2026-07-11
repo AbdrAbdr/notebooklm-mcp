@@ -171,6 +171,21 @@ export class SharedContextManager {
       log.info(`  Browser visibility override: ${overrideHeadless ? 'HEADLESS' : 'VISIBLE'}`);
     }
 
+    // A cloned persistent profile already carries the browser session. Applying an
+    // older account state on top of it can overwrite fresh VNC cookies and send a
+    // live session back to Google's account chooser after a Railway restart.
+    const baseProfile = CONFIG.chromeProfileDir;
+    const strategy = CONFIG.profileStrategy;
+    const isClonedPersistentProfile =
+      strategy === 'isolated' && CONFIG.cloneProfileOnIsolated && fs.existsSync(baseProfile);
+    const storageStateToApply = isClonedPersistentProfile ? null : statePath;
+
+    if (isClonedPersistentProfile && statePath) {
+      log.info(
+        '  🧬 Reusing cloned persistent profile cookies; skipping older storage state overlay'
+      );
+    }
+
     // Build launch options for persistent context
     // NOTE: userDataDir is passed as first parameter, NOT in options!
     // Map uiLocale to browser locale
@@ -189,7 +204,7 @@ export class SharedContextManager {
       // - Session cookies persist correctly
       // - No need for addCookies() workarounds
       // - Chrome loads everything automatically
-      ...(statePath && { storageState: statePath }),
+      ...(storageStateToApply && { storageState: storageStateToApply }),
       args: [
         '--disable-blink-features=AutomationControlled',
         '--disable-dev-shm-usage',
@@ -210,13 +225,11 @@ export class SharedContextManager {
 
     // 🔥 CRITICAL: launchPersistentContext creates/loads Chrome profile
     // Strategy handling for concurrent instances
-    const baseProfile = CONFIG.chromeProfileDir;
-    const strategy = CONFIG.profileStrategy;
     const tryLaunch = async (userDataDir: string) => {
       log.info('  🚀 Launching persistent Chrome context...');
       log.dim(`  📍 Profile location: ${userDataDir}`);
-      if (statePath) {
-        log.info(`  📄 Loading auth state: ${statePath}`);
+      if (storageStateToApply) {
+        log.info(`  📄 Loading auth state: ${storageStateToApply}`);
       }
       return chromium.launchPersistentContext(userDataDir, launchOptions);
     };
@@ -270,7 +283,7 @@ export class SharedContextManager {
     }
 
     // Validate cookies if we loaded state
-    if (statePath) {
+    if (storageStateToApply) {
       try {
         if (await this.authManager.validateCookiesExpiry(this.globalContext)) {
           log.success('  ✅ Authentication state loaded successfully');

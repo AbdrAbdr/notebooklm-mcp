@@ -3404,7 +3404,9 @@ export class ToolHandlers {
           waitUntil: 'domcontentloaded',
           timeout: 20_000,
         });
-        await randomDelay(500, 900);
+        // The NotebookLM home screen renders its primary action after the shell.
+        // Wait for that UI without relying on never-idle Google network traffic.
+        await page.waitForTimeout(2_500);
 
         const landingUrl = page.url();
         if (
@@ -3427,18 +3429,23 @@ export class ToolHandlers {
             })
             .first(),
           page
+            .getByRole('button', {
+              name: /^(create|new|создать|новый|crear|neu|créer|nouveau)/i,
+            })
+            .first(),
+          page
             .locator(
-              '[aria-label*="Create" i], [aria-label*="Создать" i], [aria-label*="New notebook" i]'
+              '[aria-label*="Create" i], [aria-label*="New" i], [aria-label*="Создать" i], [aria-label*="Новый" i], [aria-label*="Créer" i], [aria-label*="Nouveau" i]'
             )
             .first(),
           page
             .locator(
-              '.create-notebook-button, button:has-text("Create notebook"), button:has-text("New notebook")'
+              '.create-notebook-button, button:has-text("Create notebook"), button:has-text("New notebook"), button:has-text("Создать блокнот"), button:has-text("Créer un notebook")'
             )
             .first(),
           page
             .locator(
-              'button.mat-mdc-fab, button.mdc-fab, [data-testid*="create" i], [data-testid*="new-notebook" i]'
+              'button.mat-mdc-fab, [role="button"].mat-mdc-fab, button.mdc-fab, [role="button"].mdc-fab, [data-testid*="create" i], [data-testid*="new-notebook" i], [data-tooltip*="create" i], [data-tooltip*="new notebook" i]'
             )
             .first(),
         ];
@@ -3454,9 +3461,31 @@ export class ToolHandlers {
         }
         if (!clicked) {
           const debugPath = `debug-create-notebook-${Date.now()}.png`;
+          const controlLabels = await page
+            .locator('button, [role="button"]')
+            .evaluateAll((controls) =>
+              controls
+                .slice(0, 120)
+                .map((control) =>
+                  [
+                    control.getAttribute('aria-label'),
+                    control.getAttribute('title'),
+                    control.getAttribute('data-tooltip'),
+                    control.textContent,
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                )
+                .filter(Boolean)
+                .slice(0, 30)
+            )
+            .catch(() => [] as string[]);
           await page.screenshot({ path: debugPath, fullPage: true }).catch(() => undefined);
           throw new Error(
-            `Could not find Create notebook button at ${page.url()}. Screenshot: ${debugPath}`
+            `Could not find Create notebook button at ${page.url()}. ` +
+              `Visible controls: ${controlLabels.join(' | ') || 'none'}. Screenshot: ${debugPath}`
           );
         }
 
