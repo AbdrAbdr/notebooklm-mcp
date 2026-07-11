@@ -156,13 +156,20 @@ export class ContentManager {
    * Click the "Add source" button
    */
   private async clickAddSource(): Promise<void> {
+    // Opening a notebook with `?addSource=true` renders the source grid
+    // asynchronously. Prefer that grid before touching any navigation control.
+    if (this.page.url().includes('addSource=true') && (await this.waitForOpenSourcePicker(30000))) {
+      log.info('  ✅ NotebookLM source picker opened from the add-source launch route');
+      return;
+    }
+
     // First, ensure we're on the Sources panel (left panel)
     await this.ensureSourcesPanel();
 
     // Wait for panel to be ready (increased for reliability)
     await randomDelay(800, 1200);
 
-    if (await this.waitForOpenSourcePicker(7000)) {
+    if (this.page.url().includes('addSource=true') && (await this.waitForOpenSourcePicker(15000))) {
       log.info('  ✅ NotebookLM source picker became available while loading Sources');
       return;
     }
@@ -237,7 +244,7 @@ export class ContentManager {
 
     // The `?addSource=true` route can render its picker after the source tab.
     // Give that delayed UI one last chance before treating the action as missing.
-    if (await this.waitForOpenSourcePicker(7000)) {
+    if (this.page.url().includes('addSource=true') && (await this.waitForOpenSourcePicker(15000))) {
       log.info('  ✅ Source picker appeared after waiting for delayed NotebookLM UI');
       return;
     }
@@ -375,7 +382,7 @@ export class ContentManager {
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       if (await this.hasOpenSourcePicker()) return true;
       if (attempt < attempts - 1) {
-        await this.page.waitForTimeout(500);
+        await new Promise<void>((resolve) => setTimeout(resolve, 500));
       }
     }
     return false;
