@@ -3470,6 +3470,45 @@ export class ToolHandlers {
           }
         }
         if (!clicked) {
+          const createControlBox = await page
+            .locator('button, [role="button"]')
+            .evaluateAll((controls) => {
+              const control = controls.find((candidate) => {
+                const label = [
+                  candidate.getAttribute('aria-label'),
+                  candidate.getAttribute('title'),
+                  candidate.textContent,
+                ]
+                  .filter(Boolean)
+                  .join(' ')
+                  .replace(/\s+/g, ' ')
+                  .trim();
+                const rect = candidate.getBoundingClientRect();
+                return (
+                  rect.width > 0 &&
+                  rect.height > 0 &&
+                  /создать.*(?:блокнот|add)|create.*notebook|new.*notebook/i.test(label)
+                );
+              });
+              if (!control) return null;
+              const rect = control.getBoundingClientRect();
+              return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+            })
+            .catch(() => null);
+          if (createControlBox) {
+            // The Google Material control ignores HTMLElement.click() because
+            // it requires a trusted pointer event. A mouse click keeps the
+            // user-visible interaction semantics without relying on a brittle
+            // class name or fixed screen coordinate.
+            await page.mouse.click(
+              createControlBox.x + createControlBox.width / 2,
+              createControlBox.y + createControlBox.height / 2
+            );
+            clicked = true;
+            await page.waitForTimeout(500);
+          }
+        }
+        if (!clicked) {
           // NotebookLM's current Russian home screen exposes this Material
           // control to accessibility, but rejects the synthesized pointer
           // sequence from Playwright. Its native click handler is sufficient.
