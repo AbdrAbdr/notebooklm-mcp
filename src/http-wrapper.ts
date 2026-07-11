@@ -141,6 +141,17 @@ let authProbeCache: { expiresAt: number; value: LiveNotebookLMAuthProbe } | null
 let authProbeInFlight: Promise<LiveNotebookLMAuthProbe> | null = null;
 
 async function probeNotebookLMAuth(force = false): Promise<LiveNotebookLMAuthProbe> {
+  // Health polling must not launch a competing persistent Chromium while the
+  // operator is completing Google login in noVNC. The manual-auth flow performs
+  // its own forced probe after browser setup and profile sync finish.
+  if (!force && Array.from(manualAuthJobs.values()).some((job) => job.status === 'running')) {
+    return {
+      authenticated: false,
+      final_url: '',
+      reason: 'manual_auth_in_progress',
+      checked_at: new Date().toISOString(),
+    };
+  }
   if (!force && authProbeCache && authProbeCache.expiresAt > Date.now()) {
     return authProbeCache.value;
   }
