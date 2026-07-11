@@ -3424,6 +3424,16 @@ export class ToolHandlers {
 
         const createCandidates = [
           page
+            .locator('button, [role="button"]')
+            .filter({ hasText: /^(создать( блокнот)?|create( notebook)?|new( notebook)?)/i })
+            .first(),
+          page
+            .locator(
+              '[role="button"]:has-text("Создать"), [role="button"]:has-text("Create"), [role="button"]:has-text("New")'
+            )
+            .first(),
+          page.getByText(/^(создать блокнот|create notebook|new notebook)$/i).first(),
+          page
             .getByRole('button', {
               name: /(create|new|создать|новый|crear|neu|créer).*?(notebook|блокнот|cuaderno|notizbuch)/i,
             })
