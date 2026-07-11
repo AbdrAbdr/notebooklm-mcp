@@ -357,6 +357,32 @@ app.get('/rpc/auth-bundle', async (req: Request, res: Response) => {
     // the RPC provider receives the same session that just passed the live probe.
     const context = await sessionManager.getSharedContextManager().getOrCreateContext();
     const liveState = await context.storageState();
+    let notebookLMPage = context
+      .pages()
+      .find((page) => page.url().startsWith('https://notebooklm.google.com'));
+    if (!notebookLMPage) {
+      notebookLMPage = await context.newPage();
+      await notebookLMPage.goto('https://notebooklm.google.com/', {
+        waitUntil: 'domcontentloaded',
+        timeout: CONFIG.browserTimeout,
+      });
+    }
+    const livePageTokens = await notebookLMPage.evaluate(() => {
+      const data = (
+        globalThis as unknown as {
+          WIZ_global_data?: { SNlM0e?: string; FdrFJe?: string; cfb2h?: string };
+        }
+      ).WIZ_global_data;
+      return {
+        csrf_token: data?.SNlM0e || '',
+        session_id: data?.FdrFJe || '',
+        bl: data?.cfb2h || '',
+      };
+    });
+    const liveBundleState = {
+      cookies: await context.cookies('https://notebooklm.google.com/'),
+      ...livePageTokens,
+    };
     const tempStatePath = `${currentAccount.stateFilePath}.${process.pid}.tmp`;
     await fs.writeFile(tempStatePath, JSON.stringify(liveState, null, 2), { mode: 0o600 });
     await fs.rename(tempStatePath, currentAccount.stateFilePath);
@@ -366,7 +392,8 @@ app.get('/rpc/auth-bundle', async (req: Request, res: Response) => {
       suppliedToken: suppliedBrokerToken,
       accounts: accountManager.listAccounts(),
       readState: async (statePath) => JSON.parse(await fs.readFile(statePath, 'utf8')),
-      readLiveState: async (account) => (account.config.id === currentAccountId ? liveState : null),
+      readLiveState: async (account) =>
+        account.config.id === currentAccountId ? liveBundleState : null,
       onSkip: (accountId, error) =>
         log.warning(
           `RPC auth bundle skipped account ${accountId}: ${error instanceof Error ? error.message : String(error)}`

@@ -6,6 +6,9 @@ export type RPCBrokerAccount = {
 
 type BrowserState = {
   cookies?: Array<{ name?: string; value?: string; domain?: string }>;
+  csrf_token?: string;
+  session_id?: string;
+  bl?: string;
 };
 
 export type RPCAuthBundleResult = {
@@ -20,6 +23,9 @@ export type RPCAuthBundleResult = {
       priority: number;
       daily_quota: number;
       cookies: Record<string, string>;
+      csrf_token?: string;
+      session_id?: string;
+      bl?: string;
     }>;
   };
 };
@@ -71,6 +77,9 @@ export async function buildRPCAuthBundle(options: {
         priority: account.config.priority,
         daily_quota: account.quota.limit,
         cookies,
+        ...(state.csrf_token ? { csrf_token: state.csrf_token } : {}),
+        ...(state.session_id ? { session_id: state.session_id } : {}),
+        ...(state.bl ? { bl: state.bl } : {}),
       });
     } catch (error) {
       options.onSkip?.(account.config.id, error);

@@ -62,7 +62,12 @@ describe('RPC auth broker', () => {
     }));
     const readLiveState = jest.fn(async (account: RPCBrokerAccount) =>
       account.config.id === 'enabled'
-        ? { cookies: [{ name: 'SID', value: 'fresh', domain: '.google.com' }] }
+        ? {
+            cookies: [{ name: 'SID', value: 'fresh', domain: '.google.com' }],
+            csrf_token: 'fresh-csrf',
+            session_id: 'fresh-session',
+            bl: 'fresh-build',
+          }
         : null
     );
 
@@ -74,7 +79,12 @@ describe('RPC auth broker', () => {
       readLiveState,
     });
 
-    expect(result.body.accounts?.[0]?.cookies).toEqual({ SID: 'fresh' });
+    expect(result.body.accounts?.[0]).toMatchObject({
+      cookies: { SID: 'fresh' },
+      csrf_token: 'fresh-csrf',
+      session_id: 'fresh-session',
+      bl: 'fresh-build',
+    });
     expect(readLiveState).toHaveBeenCalledTimes(1);
     expect(readState).not.toHaveBeenCalled();
   });
