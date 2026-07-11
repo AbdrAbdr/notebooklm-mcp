@@ -58,6 +58,4 @@ EXPOSE 3000 6080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
 
-VOLUME ["/data"]
-
 CMD ["/app/scripts/docker-entrypoint.sh"]
