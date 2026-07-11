@@ -1164,7 +1164,6 @@ export class ContentManager {
     const timeout = 90000; // 1.5 minutes (sources can take time)
     const startTime = Date.now();
     let redirectedNotebook = false;
-    let redirectedFromNotebookUuid: string | undefined;
 
     // First, wait a bit for the dialog to close (indicates upload started)
     await randomDelay(2000, 3000);
@@ -1222,7 +1221,6 @@ export class ContentManager {
 
         if (currentUuid && expectedNotebookUuid && currentUuid !== expectedNotebookUuid) {
           redirectedNotebook = true;
-          redirectedFromNotebookUuid = expectedNotebookUuid;
           log.warning(`  ⚠️ NotebookLM redirected source upload to a different notebook`);
           log.warning(`  ⚠️ Expected: ${expectedNotebookUuid}`);
           log.warning(`  ⚠️ Got: ${currentUuid}`);
@@ -1382,7 +1380,9 @@ export class ContentManager {
           /* ignore */
         }
 
-        // If still not found, this is a failure - don't assume success
+        // NotebookLM can close the insert dialog long before it materializes the
+        // source card. Keep polling until the global processing timeout instead
+        // of turning that normal asynchronous state into an immediate failure.
         if (redirectedNotebook && currentUuid) {
           log.warning(
             `  ⚠️ Redirected notebook did not expose the source list yet; accepting current notebook as upload target`
@@ -1397,18 +1397,9 @@ export class ContentManager {
           };
         }
 
-        log.warning(`  ⚠️ Dialog closed but source not found in list - upload likely failed`);
-        return {
-          success: false,
-          sourceName,
-          notebookUrl: this.page.url(),
-          notebookId: this.page.url().match(/notebook\/([a-f0-9-]+)/)?.[1],
-          redirectedNotebook,
-          error: redirectedNotebook
-            ? `NotebookLM redirected from ${redirectedFromNotebookUuid} but source was not visible in the redirected notebook`
-            : 'Source not found after upload - dialog closed but source not visible in list',
-          status: 'failed',
-        };
+        log.info(`  ⏳ Dialog closed; source is still materializing, continuing to poll...`);
+        await new Promise<void>((resolve) => setTimeout(resolve, 2000));
+        continue;
       }
 
       // Still in dialog - check for processing indicators
