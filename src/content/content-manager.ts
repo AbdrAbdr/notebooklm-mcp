@@ -118,8 +118,14 @@ export class ContentManager {
     log.info(`  🎯 Target notebook UUID: ${expectedNotebookUuid || 'NOT FOUND'}`);
 
     try {
-      // Click "Add source" button
-      await this.clickAddSource();
+      // A retried queue job can inherit the already-open source picker from
+      // its prior browser session. Reusing that picker avoids clicking a
+      // background “Add source” control that no longer exists.
+      if (await this.hasOpenSourcePicker()) {
+        log.info('  ✅ Reusing already-open NotebookLM source picker');
+      } else {
+        await this.clickAddSource();
+      }
 
       // Wait for upload dialog
       await this.waitForUploadDialog();
@@ -315,6 +321,19 @@ export class ContentManager {
       throw new Error(
         `Could not dismiss blocking NotebookLM dialog: ${error instanceof Error ? error.message : String(error)}`
       );
+    }
+  }
+
+  private async hasOpenSourcePicker(): Promise<boolean> {
+    const picker = this.page
+      .locator(
+        '[role="dialog"] button:has-text("Copied text"), [role="dialog"] button:has-text("Upload files"), [role="dialog"] button:has-text("Websites")'
+      )
+      .first();
+    try {
+      return await picker.isVisible({ timeout: 750 });
+    } catch {
+      return false;
     }
   }
 
