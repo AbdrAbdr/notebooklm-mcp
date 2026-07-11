@@ -55,4 +55,27 @@ describe('RPC auth broker', () => {
     ]);
     expect(readState).toHaveBeenCalledTimes(1);
   });
+
+  it('prefers current live browser cookies over stale state on disk', async () => {
+    const readState = jest.fn(async () => ({
+      cookies: [{ name: 'SID', value: 'stale', domain: '.google.com' }],
+    }));
+    const readLiveState = jest.fn(async (account: RPCBrokerAccount) =>
+      account.config.id === 'enabled'
+        ? { cookies: [{ name: 'SID', value: 'fresh', domain: '.google.com' }] }
+        : null
+    );
+
+    const result = await buildRPCAuthBundle({
+      expectedToken: 'secret',
+      suppliedToken: 'secret',
+      accounts,
+      readState,
+      readLiveState,
+    });
+
+    expect(result.body.accounts?.[0]?.cookies).toEqual({ SID: 'fresh' });
+    expect(readLiveState).toHaveBeenCalledTimes(1);
+    expect(readState).not.toHaveBeenCalled();
+  });
 });

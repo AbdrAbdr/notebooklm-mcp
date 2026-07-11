@@ -321,12 +321,52 @@ app.get('/accounts/health', async (_req: Request, res: Response) => {
 // the isolated Railway service.
 app.get('/rpc/auth-bundle', async (req: Request, res: Response) => {
   try {
+    const expectedBrokerToken = process.env.NOTEBOOKLM_RPC_BROKER_TOKEN?.trim();
+    const suppliedBrokerToken = String(req.headers['x-rpc-broker-token'] || '').trim();
+    res.setHeader('Cache-Control', 'no-store');
+    if (!expectedBrokerToken) {
+      return res.status(503).json({ success: false, error: 'RPC auth broker is not configured' });
+    }
+    if (!suppliedBrokerToken || suppliedBrokerToken !== expectedBrokerToken) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+    if (Array.from(manualAuthJobs.values()).some((job) => job.status === 'running')) {
+      return res
+        .status(409)
+        .json({ success: false, error: 'Manual authentication is in progress' });
+    }
     const accountManager = await getAccountManager();
+    const currentAccountId = await accountManager.getCurrentAccountId();
+    const liveAuth = await probeNotebookLMAuth(true);
+    if (!currentAccountId || !liveAuth.authenticated) {
+      return res.status(409).json({
+        success: false,
+        error: 'No live authenticated NotebookLM account is available',
+      });
+    }
+
+    const currentAccount = accountManager.getAccount(currentAccountId);
+    if (!currentAccount) {
+      return res
+        .status(409)
+        .json({ success: false, error: 'Current NotebookLM account was not found' });
+    }
+
+    // Persistent Chromium can refresh Google cookies while the account state
+    // file remains stale. Snapshot the live context for the current account so
+    // the RPC provider receives the same session that just passed the live probe.
+    const context = await sessionManager.getSharedContextManager().getOrCreateContext();
+    const liveState = await context.storageState();
+    const tempStatePath = `${currentAccount.stateFilePath}.${process.pid}.tmp`;
+    await fs.writeFile(tempStatePath, JSON.stringify(liveState, null, 2), { mode: 0o600 });
+    await fs.rename(tempStatePath, currentAccount.stateFilePath);
+
     const result = await buildRPCAuthBundle({
-      expectedToken: process.env.NOTEBOOKLM_RPC_BROKER_TOKEN,
-      suppliedToken: String(req.headers['x-rpc-broker-token'] || ''),
+      expectedToken: expectedBrokerToken,
+      suppliedToken: suppliedBrokerToken,
       accounts: accountManager.listAccounts(),
       readState: async (statePath) => JSON.parse(await fs.readFile(statePath, 'utf8')),
+      readLiveState: async (account) => (account.config.id === currentAccountId ? liveState : null),
       onSkip: (accountId, error) =>
         log.warning(
           `RPC auth bundle skipped account ${accountId}: ${error instanceof Error ? error.message : String(error)}`

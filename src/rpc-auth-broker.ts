@@ -29,6 +29,7 @@ export async function buildRPCAuthBundle(options: {
   suppliedToken?: string;
   accounts: RPCBrokerAccount[];
   readState: (path: string) => Promise<BrowserState>;
+  readLiveState?: (account: RPCBrokerAccount) => Promise<BrowserState | null>;
   onSkip?: (accountId: string, error: unknown) => void;
 }): Promise<RPCAuthBundleResult> {
   const headers = { 'Cache-Control': 'no-store' } as const;
@@ -50,7 +51,9 @@ export async function buildRPCAuthBundle(options: {
   for (const account of options.accounts) {
     if (!account.config.enabled) continue;
     try {
-      const state = await options.readState(account.stateFilePath);
+      const state =
+        (await options.readLiveState?.(account)) ??
+        (await options.readState(account.stateFilePath));
       const cookies = Object.fromEntries(
         (state.cookies || [])
           .filter(
