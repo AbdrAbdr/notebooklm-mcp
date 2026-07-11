@@ -3606,8 +3606,46 @@ export class ToolHandlers {
             .pages()
             .map((candidatePage) => candidatePage.url())
             .join(' | ');
+          const createControls = await page
+            .locator('button, [role="button"]')
+            .evaluateAll((controls) =>
+              controls
+                .filter((control) =>
+                  /создать.*(?:блокнот|add)|create.*notebook|new.*notebook/i.test(
+                    [
+                      control.getAttribute('aria-label'),
+                      control.getAttribute('title'),
+                      control.textContent,
+                    ]
+                      .filter(Boolean)
+                      .join(' ')
+                  )
+                )
+                .slice(0, 3)
+                .map((control) => {
+                  const rect = control.getBoundingClientRect();
+                  return {
+                    tag: control.tagName,
+                    role: control.getAttribute('role'),
+                    ariaLabel: control.getAttribute('aria-label'),
+                    ariaDisabled: control.getAttribute('aria-disabled'),
+                    disabled: control.getAttribute('disabled'),
+                    className: control.getAttribute('class'),
+                    text: (control.textContent || '').replace(/\s+/g, ' ').trim(),
+                    rect: [
+                      Math.round(rect.x),
+                      Math.round(rect.y),
+                      Math.round(rect.width),
+                      Math.round(rect.height),
+                    ],
+                    html: control.outerHTML.slice(0, 900),
+                  };
+                })
+            )
+            .catch(() => [] as unknown[]);
           throw new Error(
-            `NotebookLM did not provide a final notebook URL within 90 seconds. Open pages: ${openUrls || 'none'}`
+            `NotebookLM did not provide a final notebook URL within 90 seconds. ` +
+              `Open pages: ${openUrls || 'none'}. Create controls: ${JSON.stringify(createControls)}`
           );
         }
         await randomDelay(500, 900);
