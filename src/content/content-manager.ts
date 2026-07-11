@@ -162,7 +162,7 @@ export class ContentManager {
     // Wait for panel to be ready (increased for reliability)
     await randomDelay(800, 1200);
 
-    if (await this.hasOpenSourcePicker()) {
+    if (await this.waitForOpenSourcePicker(7000)) {
       log.info('  ✅ NotebookLM source picker became available while loading Sources');
       return;
     }
@@ -172,7 +172,7 @@ export class ContentManager {
     // action as the source-panel add button.
     await this.dismissBlockingDialog();
 
-    if (await this.hasOpenSourcePicker()) {
+    if (await this.waitForOpenSourcePicker(3000)) {
       log.info('  ✅ Reusing NotebookLM source picker after dialog check');
       return;
     }
@@ -184,9 +184,6 @@ export class ContentManager {
       'button[aria-label*="Add source"]',
       'button[aria-label*="Ajouter une source"]',
       'button[aria-label*="add source" i]',
-      // Icon button with "add" icon specifically
-      'button:has(mat-icon:has-text("add"))',
-      'button:has(mat-icon:has-text("add_circle"))',
       // Text-based patterns (bilingual via i18n)
       ...i18nSelectors('button:has-text("{text}")', 'buttons', 'addSource'),
       // FAB buttons (floating action button for adding)
@@ -236,6 +233,13 @@ export class ContentManager {
       }
     } catch {
       // Continue to debug
+    }
+
+    // The `?addSource=true` route can render its picker after the source tab.
+    // Give that delayed UI one last chance before treating the action as missing.
+    if (await this.waitForOpenSourcePicker(7000)) {
+      log.info('  ✅ Source picker appeared after waiting for delayed NotebookLM UI');
+      return;
     }
 
     // Debug: log page content to help identify the correct selector
@@ -364,6 +368,17 @@ export class ContentManager {
     } catch {
       return false;
     }
+  }
+
+  private async waitForOpenSourcePicker(timeoutMs: number): Promise<boolean> {
+    const attempts = Math.max(1, Math.ceil(timeoutMs / 500));
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (await this.hasOpenSourcePicker()) return true;
+      if (attempt < attempts - 1) {
+        await this.page.waitForTimeout(500);
+      }
+    }
+    return false;
   }
 
   /**
