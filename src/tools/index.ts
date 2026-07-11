@@ -3470,6 +3470,39 @@ export class ToolHandlers {
           }
         }
         if (!clicked) {
+          // NotebookLM's current Russian home screen exposes this Material
+          // control to accessibility, but rejects the synthesized pointer
+          // sequence from Playwright. Its native click handler is sufficient.
+          clicked = await page
+            .locator('button, [role="button"]')
+            .evaluateAll((controls) => {
+              const createControl = controls.find((control) => {
+                const label = [
+                  control.getAttribute('aria-label'),
+                  control.getAttribute('title'),
+                  control.textContent,
+                ]
+                  .filter(Boolean)
+                  .join(' ')
+                  .replace(/\s+/g, ' ')
+                  .trim();
+                const rect = control.getBoundingClientRect();
+                return (
+                  rect.width > 0 &&
+                  rect.height > 0 &&
+                  /создать.*(?:блокнот|add)|create.*notebook|new.*notebook/i.test(label)
+                );
+              }) as { click?: () => void } | undefined;
+              if (!createControl) return false;
+              createControl.click?.();
+              return true;
+            })
+            .catch(() => false);
+          if (clicked) {
+            await page.waitForTimeout(500);
+          }
+        }
+        if (!clicked) {
           const debugPath = `debug-create-notebook-${Date.now()}.png`;
           const controlLabels = await page
             .locator('button, [role="button"]')
