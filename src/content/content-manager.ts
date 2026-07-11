@@ -137,7 +137,7 @@ export class ContentManager {
         case 'url':
           return await this.uploadUrl(input, expectedNotebookUuid);
         case 'text':
-          return await this.uploadText(input, expectedNotebookUuid);
+          return await this.uploadText(input);
         case 'google_drive':
           return await this.uploadGoogleDrive(input, expectedNotebookUuid);
         case 'youtube':
@@ -715,10 +715,7 @@ export class ContentManager {
   /**
    * Upload text content
    */
-  private async uploadText(
-    input: SourceUploadInput,
-    expectedNotebookUuid?: string
-  ): Promise<SourceUploadResult> {
+  private async uploadText(input: SourceUploadInput): Promise<SourceUploadResult> {
     if (!input.text) {
       return { success: false, error: 'Text content is required' };
     }
@@ -927,16 +924,18 @@ export class ContentManager {
       log.info(`  🔍 Looking for upload button...`);
       await this.clickUploadButton();
 
-      // Wait for processing - NotebookLM names pasted text sources "Texte collé" in French or "Pasted text"
-      // We'll look for either the expected name or "Texte collé"
-      // Pass initialUuid to detect notebook redirection
-      const result = await this.waitForSourceProcessing(
-        input.title || 'Texte collé',
-        textPreview,
-        expectedNotebookUuid
-      );
-
-      return result;
+      // Text sources become visible asynchronously. The upstream Worker call has
+      // a short HTTP lifetime, so returning acceptance here avoids a false 499
+      // while the next generation stage waits for NotebookLM itself.
+      await randomDelay(500, 900);
+      const notebookUrl = this.page.url();
+      return {
+        success: true,
+        sourceName: input.title || 'Pasted text',
+        notebookUrl,
+        notebookId: notebookUrl.match(/notebook\/([a-f0-9-]+)/)?.[1],
+        status: 'processing',
+      };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       return { success: false, error: `Text upload failed: ${errorMsg}` };
