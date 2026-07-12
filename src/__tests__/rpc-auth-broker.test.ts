@@ -1,5 +1,9 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import { buildRPCAuthBundle, type RPCBrokerAccount } from '../rpc-auth-broker.js';
+import {
+  buildRPCAuthBundle,
+  extractRPCPageTokens,
+  type RPCBrokerAccount,
+} from '../rpc-auth-broker.js';
 
 const accounts: RPCBrokerAccount[] = [
   {
@@ -15,6 +19,14 @@ const accounts: RPCBrokerAccount[] = [
 ];
 
 describe('RPC auth broker', () => {
+  it('extracts live NotebookLM request tokens from page HTML', () => {
+    expect(
+      extractRPCPageTokens(
+        '<script>window.WIZ_global_data={"SNlM0e":"csrf","FdrFJe":"sid","cfb2h":"build"}</script>'
+      )
+    ).toEqual({ csrf_token: 'csrf', session_id: 'sid', bl: 'build' });
+  });
+
   it('fails closed when the broker token is not configured', async () => {
     const result = await buildRPCAuthBundle({ accounts, readState: jest.fn() });
     expect(result).toMatchObject({ status: 503, headers: { 'Cache-Control': 'no-store' } });

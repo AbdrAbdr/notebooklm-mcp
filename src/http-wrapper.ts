@@ -21,7 +21,7 @@ import { AutoLoginManager, getAccountManager, maskEmail } from './accounts/index
 import type { RotationStrategy } from './accounts/index.js';
 import { CONFIG } from './config.js';
 import { log } from './utils/logger.js';
-import { buildRPCAuthBundle } from './rpc-auth-broker.js';
+import { buildRPCAuthBundle, extractRPCPageTokens } from './rpc-auth-broker.js';
 
 // Extend Express Request to include requestId
 declare global {
@@ -379,9 +379,12 @@ app.get('/rpc/auth-bundle', async (req: Request, res: Response) => {
         bl: data?.cfb2h || '',
       };
     });
+    const htmlPageTokens = extractRPCPageTokens(await notebookLMPage.content());
     const liveBundleState = {
       cookies: await context.cookies('https://notebooklm.google.com/'),
-      ...livePageTokens,
+      csrf_token: livePageTokens.csrf_token || htmlPageTokens.csrf_token,
+      session_id: livePageTokens.session_id || htmlPageTokens.session_id,
+      bl: livePageTokens.bl || htmlPageTokens.bl,
     };
     const tempStatePath = `${currentAccount.stateFilePath}.${process.pid}.tmp`;
     await fs.writeFile(tempStatePath, JSON.stringify(liveState, null, 2), { mode: 0o600 });

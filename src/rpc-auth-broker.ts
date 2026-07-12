@@ -11,6 +11,17 @@ type BrowserState = {
   bl?: string;
 };
 
+export function extractRPCPageTokens(
+  html: string
+): Pick<BrowserState, 'csrf_token' | 'session_id' | 'bl'> {
+  const value = (pattern: RegExp) => html.match(pattern)?.[1] || '';
+  return {
+    csrf_token: value(/"SNlM0e":"([^"]+)"/),
+    session_id: value(/"FdrFJe":"([^"]+)"/),
+    bl: value(/"cfb2h":"([^"]+)"/),
+  };
+}
+
 export type RPCAuthBundleResult = {
   status: number;
   headers: { 'Cache-Control': 'no-store' };
